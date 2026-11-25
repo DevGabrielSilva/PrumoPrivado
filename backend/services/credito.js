@@ -27,9 +27,24 @@ async function syncOutros(c,codFatura){
   return{...r,conhecidas};
 }
 
-async function createCredit(c,b){const n=Math.max(1,Number(b.quantidadeParcelas||1)),total=Math.round(money(b.valorTotal)*100),base=Math.floor(total/n),rest=total-base*n,card=(await c.query('SELECT diaVencimento FROM tbCartoes WHERE codCartao=?',[b.codCartao]))[0];if(!card)throw Error('Cartão inválido');if(/^\d{4}-\d{2}$/.test(b.dataPrimeiraParcela))b.dataPrimeiraParcela=`${b.dataPrimeiraParcela}-${String(Math.min(28,Number(card.diaVencimento))).padStart(2,'0')}`;const cp=await c.query(`INSERT INTO tbComprasCartao(codCartao,dataCompra,descricao,categoria,valorTotal,quantidadeParcelas,valorParcela,dataPrimeiraParcela) VALUES(?,?,?,?,?,?,?,?)`,[b.codCartao,b.dataCompra,b.descricao,b.categoria||null,total/100,n,base/100,b.dataPrimeiraParcela]);const tocadas=new Set();for(let i=0;i<n;i++){const d=new Date(b.dataPrimeiraParcela+'T12:00:00');d.setMonth(d.getMonth()+i);const ds=d.toISOString().slice(0,10),comp=ds.slice(0,7),par=await c.query('INSERT INTO tbParcelasCartao(codCompra,numeroParcela,valor,dataParcela) VALUES(?,?,?,?)',[cp.insertId,i+1,(base+(i===n-1?rest:0))/100,ds]);let f=(await c.query('SELECT codFatura FROM tbFaturas WHERE codCartao=? AND competencia=?',[b.codCartao,comp]))[0];if(!f){const fr=await c.query(`INSERT INTO tbFaturas(codCartao,dataFechamento,dataVencimento,valorTotal,paga,competencia,valorInformado) VALUES(?,?,?,?,0,?,0)`,[b.codCartao,ds,ds,0,comp]);f={codFatura:fr.insertId}}await c.query('INSERT IGNORE INTO tbFaturaParcelas(codFatura,codParcela) VALUES(?,?)',[f.codFatura,par.insertId]);tocadas.add(f.codFatura)}
+// Aceita 'AAAA-MM' (mês da fatura) ou 'AAAA-MM-DD' e devolve sempre uma data completa válida.
+// O mês vira o dia de vencimento do cartão (limitado a 28 para existir em todo mês).
+function dataPrimeiraParcela(valor,diaVencimento){
+  const v=String(valor||'').slice(0,10);
+  if(/^\d{4}-\d{2}$/.test(v))return `${v}-${String(Math.min(28,Math.max(1,Number(diaVencimento)||1))).padStart(2,'0')}`;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(v))return v;
+  return null;
+}
+// Mês provável da fatura: compras depois do fechamento caem na fatura do mês seguinte.
+function mesProvavelFatura(dataCompra,diaFechamento){
+  const [y,m,d]=String(dataCompra).slice(0,10).split('-').map(Number);let ano=y,mes=m;
+  if(d>Number(diaFechamento||31)){mes++;if(mes>12){mes=1;ano++}}
+  return `${ano}-${String(mes).padStart(2,'0')}`;
+}
+
+async function createCredit(c,b){const n=Math.max(1,Number(b.quantidadeParcelas||1)),total=Math.round(money(b.valorTotal)*100),base=Math.floor(total/n),rest=total-base*n,card=(await c.query('SELECT diaVencimento FROM tbCartoes WHERE codCartao=?',[b.codCartao]))[0];if(!card)throw Error('Cartão inválido');b.dataPrimeiraParcela=dataPrimeiraParcela(b.dataPrimeiraParcela,card.diaVencimento);if(!b.dataPrimeiraParcela)throw Error('Informe o mês da primeira fatura');const cp=await c.query(`INSERT INTO tbComprasCartao(codCartao,dataCompra,descricao,categoria,valorTotal,quantidadeParcelas,valorParcela,dataPrimeiraParcela) VALUES(?,?,?,?,?,?,?,?)`,[b.codCartao,b.dataCompra,b.descricao,b.categoria||null,total/100,n,base/100,b.dataPrimeiraParcela]);const tocadas=new Set();for(let i=0;i<n;i++){const d=new Date(b.dataPrimeiraParcela+'T12:00:00');d.setMonth(d.getMonth()+i);const ds=d.toISOString().slice(0,10),comp=ds.slice(0,7),par=await c.query('INSERT INTO tbParcelasCartao(codCompra,numeroParcela,valor,dataParcela) VALUES(?,?,?,?)',[cp.insertId,i+1,(base+(i===n-1?rest:0))/100,ds]);let f=(await c.query('SELECT codFatura FROM tbFaturas WHERE codCartao=? AND competencia=?',[b.codCartao,comp]))[0];if(!f){const fr=await c.query(`INSERT INTO tbFaturas(codCartao,dataFechamento,dataVencimento,valorTotal,paga,competencia,valorInformado) VALUES(?,?,?,?,0,?,0)`,[b.codCartao,ds,ds,0,comp]);f={codFatura:fr.insertId}}await c.query('INSERT IGNORE INTO tbFaturaParcelas(codFatura,codParcela) VALUES(?,?)',[f.codFatura,par.insertId]);tocadas.add(f.codFatura)}
   // Se a fatura já tinha o total informado, o "Outros" é recalculado com a nova compra.
   for(const id of tocadas)await syncOutros(c,id);
   return Number(cp.insertId)}
 
-module.exports={createCredit,syncOutros,calcularOutros};
+module.exports={createCredit,syncOutros,calcularOutros,dataPrimeiraParcela,mesProvavelFatura};
