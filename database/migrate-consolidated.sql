@@ -171,3 +171,7 @@ AND dataFimRecorrencia=dataInicioRecorrencia;
 -- v2.2: despesa automática "Outros" da fatura (compra com chave de origem única)
 ALTER TABLE tbComprasCartao ADD COLUMN IF NOT EXISTS chaveOrigem VARCHAR(80) NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS uk_compra_origem ON tbComprasCartao(chaveOrigem);
+
+-- v2.2: acesso com senha, metas e backup
+CREATE TABLE IF NOT EXISTS tbAcesso(id TINYINT PRIMARY KEY,ativo BOOLEAN NOT NULL DEFAULT FALSE,senhaHash VARCHAR(300) NULL);
+CREATE TABLE IF NOT EXISTS tbMetas(chave VARCHAR(40) PRIMARY KEY,valor DECIMAL(12,2) NOT NULL DEFAULT 0);

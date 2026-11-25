@@ -41,5 +41,9 @@ body{background:var(--bg);color:var(--text);transition:background .2s,color .2s}
 @media(max-width:720px){.indicator-3{grid-template-columns:1fr!important}.fab{right:16px;bottom:16px}.pru-bubble{left:12px;bottom:84px}.bar-line{grid-template-columns:80px 1fr auto}}
 .quick-dialog{margin:auto;position:fixed;inset:0;height:fit-content}.simulator-note p#quickSimAdvice{opacity:1!important}.sim-result .forecast-item b{color:#fff}.sim-result .forecast-item b.negative{color:#ff7a8a}
 #quickSimAdvice.advice-vermelho{color:var(--red)!important}#quickSimAdvice.advice-amarelo{color:var(--amber)!important}#quickSimAdvice.advice-verde{color:var(--green)!important}
-.eye-btn{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;padding:0}
+.btn-link{display:inline-flex;align-items:center;padding:10px 14px;border-radius:10px;text-decoration:none}.eye-btn{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;padding:0}
 .privado input.money-input{-webkit-text-security:disc}
+#metaPanel h3,#metaPanel+.panel h3{margin:0 0 8px}
+.panel h3+.hint{display:block;margin:0 0 12px;position:static}
+.panel .hint{margin-bottom:10px}
+.panel .form-grid,.panel .acoes{margin-top:10px}

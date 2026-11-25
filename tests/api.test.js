@@ -22,6 +22,7 @@ const cfgFalsa = {
 };
 pool.query = async (sql) => {
   const s = String(sql);
+  if (s.startsWith('SHOW TABLES')) return [];
   if (s.includes('DATABASE()')) return [{ banco: 'db_teste' }];
   if (s.includes('tbConfiguracoes')) return [cfgFalsa];
   if (s.includes('SUM(')) return [{ v: 0, entradas: 0, saidas: 0, efetivado: 0, previsto: 0, compras: 0, faturas: 0, n: 0, saldo: 0, conhecido: 0 }];
@@ -43,7 +44,7 @@ for (const rota of ['/api/app/saude', '/api/app/dashboard', '/api/app/projecao',
   '/api/app/transferencias', '/api/app/cambio', '/api/app/bens', '/api/app/cartoes', '/api/app/faturas',
   '/api/app/objetivos', '/api/app/configuracoes', '/api/app/gastos-fixos', '/api/app/resumo-financeiro',
   '/api/app/compromissos', '/api/app/bens/1/detalhes', '/api/app/lembretes', '/api/app/resumo-mes',
-  '/api/app/categorias', '/api/app/sugestao-categoria?descricao=mercado']) {
+  '/api/app/categorias', '/api/app/meta-outros', '/api/auth/estado', '/api/app/sugestao-categoria?descricao=mercado']) {
   test(`GET ${rota} responde 200 com sucesso`, async () => {
     const r = await fetch(base + rota);
     assert.strictEqual(r.status, 200);
@@ -51,6 +52,17 @@ for (const rota of ['/api/app/saude', '/api/app/dashboard', '/api/app/projecao',
     assert.strictEqual(j.sucesso, true, JSON.stringify(j));
   });
 }
+
+test('backup e CSV são arquivos para download', async () => {
+  const b = await fetch(base + '/api/app/backup');
+  assert.strictEqual(b.status, 200); assert.match(b.headers.get('content-disposition'), /attachment; filename="prumo-backup-/);
+  assert.strictEqual((await b.json()).formato, 'prumo-backup');
+  for (const t of ['movimentacoes', 'faturas', 'compras', 'transferencias']) {
+    const r = await fetch(`${base}/api/app/exportar/${t}.csv`);
+    assert.strictEqual(r.status, 200, t); assert.match(r.headers.get('content-type'), /text\/csv/); assert.match(r.headers.get('content-disposition'), /\.csv"/);
+  }
+  assert.strictEqual((await fetch(base + '/api/app/exportar/xyz.csv')).status, 404);
+});
 
 test('GET / serve a página inicial', async () => {
   const r = await fetch(base + '/');

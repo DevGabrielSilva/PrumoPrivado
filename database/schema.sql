@@ -117,3 +117,7 @@ CREATE TABLE IF NOT EXISTS tbOcorrenciasRecorrentes(
  FOREIGN KEY(codFinEfetivada) REFERENCES tbFinancas(codFin) ON DELETE SET NULL,
  UNIQUE KEY uk_ocorrencia_modelo_competencia(codFinModelo,competencia)
 );
+
+-- v2.2: acesso com senha, metas e backup
+CREATE TABLE IF NOT EXISTS tbAcesso(id TINYINT PRIMARY KEY,ativo BOOLEAN NOT NULL DEFAULT FALSE,senhaHash VARCHAR(300) NULL);
+CREATE TABLE IF NOT EXISTS tbMetas(chave VARCHAR(40) PRIMARY KEY,valor DECIMAL(12,2) NOT NULL DEFAULT 0);

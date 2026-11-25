@@ -60,6 +60,13 @@ function comentarioDiario(ctx={},lembretes={}){
   return 'Tudo certo por aqui. Anote seus gastos do dia pra eu cuidar do resto.';
 }
 
-const api={reais,mesNome,objetivoAlvo,comentarioLancamento,comentarioTransferencia,comentarioFatura,comentarioSimulacao,comentarioDiario};
+// m: resposta de /meta-outros. Só fala quando está perto (>=80%) ou estourou.
+function comentarioMetaOutros(m){
+  if(!m||m.nivel==='SEM_META'||m.nivel==='OK')return null;
+  if(m.nivel==='ESTOUROU')return `Você passou da meta de "Outros" do mês: ${reais(m.gasto)} de ${reais(m.meta)}. Vale segurar os gastos pequenos até o fim do mês.`;
+  return `Cuidado: "Outros" já chegou a ${Math.round(m.percentual)}% da meta do mês (${reais(m.gasto)} de ${reais(m.meta)}). Restam ${reais(m.restante)}.`;
+}
+
+const api={comentarioMetaOutros,reais,mesNome,objetivoAlvo,comentarioLancamento,comentarioTransferencia,comentarioFatura,comentarioSimulacao,comentarioDiario};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.Pru=api;
 })(typeof window!=='undefined'?window:globalThis);

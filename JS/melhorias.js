@@ -8,12 +8,14 @@ let pruTimer;
 function pruFala(texto){if(!texto||pruModo()==='quieto')return;$('#pruBubbleText').textContent=texto;$('#pruBubble').classList.remove('hidden');clearTimeout(pruTimer);pruTimer=setTimeout(()=>$('#pruBubble').classList.add('hidden'),11000)}
 $('#pruBubbleClose').onclick=()=>$('#pruBubble').classList.add('hidden');
 async function pruCtx(){const[d,g]=await Promise.all([api0('dashboard'),api0('objetivos')]);return{saldo:d.saldo,limiteSeguranca:d.config.limiteSeguranca,poupado:d.poupanca.total,objetivos:g,proximoRisco:null}}
+async function pruMeta(){try{return Pru.comentarioMetaOutros(await api0('meta-outros'))}catch{return null}}
 async function pruDepois(u,body,res){
+  if(['movimentacoes','faturas'].includes(u)){const m=await pruMeta();if(m)return pruFala(m)}
   if(u==='movimentacoes')return pruFala(Pru.comentarioLancamento(body,await pruCtx()));
   if(u==='transferencias')return pruFala(Pru.comentarioTransferencia(body,await pruCtx()));
   if(u==='faturas')return pruFala(Pru.comentarioFatura(res));
 }
-api=async function(u,o={}){const r=await api0(u,o);if(String(o.method||'GET').toUpperCase()==='POST'&&['movimentacoes','transferencias','faturas'].includes(u)){let b={};try{b=JSON.parse(o.body||'{}')}catch{}setTimeout(()=>pruDepois(u,b,r).catch(()=>{}),700)}return r};
+api=async function(u,o={}){let r;try{r=await api0(u,o)}catch(e){if(e.message==='Acesso protegido'){location.href='/login.html';return new Promise(()=>{})}throw e}if(String(o.method||'GET').toUpperCase()==='POST'&&['movimentacoes','transferencias','faturas'].includes(u)){let b={};try{b=JSON.parse(o.body||'{}')}catch{}setTimeout(()=>pruDepois(u,b,r).catch(()=>{}),700)}return r};
 $('#pruSelect').value=pruModo();$('#pruSelect').onchange=e=>localStorage.setItem('prumo-pru',e.target.value);
 
 // ---------- Simulador: o Pru diz com clareza o que acontece ----------
@@ -25,7 +27,7 @@ financialSummary=async function(){
   $('#financialIndicators').innerHTML=`<article class="indicator-card ${s.saldoLivre<0?'bad':'good'}"><small>Livre de verdade</small><b class="${s.saldoLivre<0?'negative':''}">${brl(s.saldoLivre)}</b><span>Saldo menos gastos fixos e margem</span></article><article class="indicator-card ${s.sobraMensal<0?'bad':'good'}"><small>Sobra do mês</small><b class="${s.sobraMensal<0?'negative':''}">${brl(s.sobraMensal)}</b><span>Receitas fixas menos gastos fixos</span></article><article class="indicator-card ${s.proximoRisco?'warn':'good'}"><small>Próximo aperto</small><b>${s.proximoRisco?fullMonth(s.proximoRisco.mes):'Nenhum'}</b><span>${s.proximoRisco?`Saldo previsto: ${brl(s.proximoRisco.saldo)}`:'Nos próximos 12 meses'}</span></article>`;
   $('#moreNumbers').innerHTML=`<article class="indicator-card"><small>Custo fixo mensal</small><b>${brl(s.custoFixo)}</b><span>${s.comprometimento.toFixed(1)}% da renda fixa</span></article><article class="indicator-card"><small>Reserva</small><b>${s.mesesReserva.toFixed(1)} meses</b><span>de gastos fixos cobertos</span></article>`;
   $('#compromissos').innerHTML=commit.map(x=>`<button class="commitment-item" data-page="${x.origem==='FATURA'?'cartoes':'movimentacoes'}"><time>${date(x.data)}</time><span>${esc(x.descricao)}</span><b class="${x.tipo==='DESPESA'?'negative':'positive'}">${x.tipo==='DESPESA'?'-':'+'}${brl(x.valor)}</b></button>`).join('')||'<p>Nenhum compromisso previsto para os próximos 30 dias.</p>';
-  $('#pruTip').textContent=Pru.comentarioDiario({...ctx,proximoRisco:s.proximoRisco},lemb);
+  $('#pruTip').textContent=(await pruMeta())||Pru.comentarioDiario({...ctx,proximoRisco:s.proximoRisco},lemb);
   renderLembretes(lemb);
 };
 
