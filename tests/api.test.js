@@ -42,7 +42,8 @@ test.after(async () => { server.close(); });
 for (const rota of ['/api/app/saude', '/api/app/dashboard', '/api/app/projecao', '/api/app/movimentacoes',
   '/api/app/transferencias', '/api/app/cambio', '/api/app/bens', '/api/app/cartoes', '/api/app/faturas',
   '/api/app/objetivos', '/api/app/configuracoes', '/api/app/gastos-fixos', '/api/app/resumo-financeiro',
-  '/api/app/compromissos', '/api/app/bens/1/detalhes']) {
+  '/api/app/compromissos', '/api/app/bens/1/detalhes', '/api/app/lembretes', '/api/app/resumo-mes',
+  '/api/app/categorias', '/api/app/sugestao-categoria?descricao=mercado']) {
   test(`GET ${rota} responde 200 com sucesso`, async () => {
     const r = await fetch(base + rota);
     assert.strictEqual(r.status, 200);

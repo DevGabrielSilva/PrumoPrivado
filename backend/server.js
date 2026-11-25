@@ -8,7 +8,7 @@ const HOST=process.env.HOST||'127.0.0.1';
 const{pool}=require('./db');
 const{projection,ensureOccurrences}=require('./services/core');
 
-app.use(express.json());app.use(express.static(path.join(__dirname,'..')));
+app.use(express.json({limit:'9mb'}));app.use(express.static(path.join(__dirname,'..')));
 
 app.use('/api/app',require('./routes/visao-geral'));
 app.use('/api/app',require('./routes/movimentacoes'));

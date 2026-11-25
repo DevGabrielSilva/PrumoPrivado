@@ -167,3 +167,7 @@ CREATE TABLE IF NOT EXISTS tbOcorrenciasRecorrentes(
 UPDATE tbFinancas SET dataFimRecorrencia=NULL
 WHERE recorrente=1 AND UPPER(TRIM(COALESCE(frequencia,'')))='MENSAL'
 AND dataFimRecorrencia=dataInicioRecorrencia;
+
+-- v2.2: despesa automática "Outros" da fatura (compra com chave de origem única)
+ALTER TABLE tbComprasCartao ADD COLUMN IF NOT EXISTS chaveOrigem VARCHAR(80) NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uk_compra_origem ON tbComprasCartao(chaveOrigem);
