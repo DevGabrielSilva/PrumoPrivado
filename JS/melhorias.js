@@ -67,3 +67,16 @@ $('#resumoAtualizar').onclick=()=>resumo().catch(x=>toast(x.message,'negative'))
 const load0=load;load=async function(id){if(id==='resumo'){try{await resumo()}catch(e){toast(e.message,'negative')}return}await load0(id);if(id==='movimentacoes')preencherCategorias()};
 preencherCategorias();
 load(document.querySelector('.page.active').id); // recarrega a página inicial já com as extensões desta versão
+
+// ---------- Modo privacidade (ícone de olho): esconde valores em todas as telas ----------
+const PRIV_RE=/-?(?:R\$|US\$|€)\s?-?[\d.,]+/g,privOriginal=new WeakMap();let privAplicando=false;
+const privOn=()=>localStorage.getItem('prumo-privado')==='1';
+function privTexto(n){if(!n.nodeValue||!PRIV_RE.test(n.nodeValue)){PRIV_RE.lastIndex=0;return}PRIV_RE.lastIndex=0;if(!privOriginal.has(n))privOriginal.set(n,n.nodeValue);n.nodeValue=n.nodeValue.replace(PRIV_RE,'••••')}
+function privVarrer(raiz){const w=document.createTreeWalker(raiz,NodeFilter.SHOW_TEXT,{acceptNode:n=>n.parentElement&&!n.parentElement.closest('script,style,textarea,option,#privToggle')?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_REJECT});const lista=[];while(w.nextNode())lista.push(w.currentNode);lista.forEach(privTexto)}
+function privRestaurar(){const w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);while(w.nextNode()){const n=w.currentNode;if(privOriginal.has(n)){n.nodeValue=privOriginal.get(n);privOriginal.delete(n)}}}
+const privObs=new MutationObserver(ms=>{if(privAplicando||!privOn())return;privAplicando=true;try{for(const m of ms){if(m.type==='characterData')privTexto(m.target);else m.addedNodes.forEach(n=>{if(n.nodeType===3)privTexto(n);else if(n.nodeType===1)privVarrer(n)})}}finally{privAplicando=false}});
+function privIcone(){const on=privOn();$('#privToggle').innerHTML=on?'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>':'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';$('#privToggle').title=on?'Mostrar valores':'Ocultar valores';$('#privToggle').setAttribute('aria-label',$('#privToggle').title);$('#privToggle').setAttribute('aria-pressed',on)}
+function privAplicar(){privAplicando=true;try{if(privOn())privVarrer(document.body);else privRestaurar()}finally{privAplicando=false}privIcone();document.body.classList.toggle('privado',privOn())}
+const privBtn=document.createElement('button');privBtn.id='privToggle';privBtn.type='button';privBtn.className='ghost eye-btn';$('.header-actions').prepend(privBtn);
+privBtn.onclick=()=>{localStorage.setItem('prumo-privado',privOn()?'0':'1');privAplicar()};
+privObs.observe(document.body,{childList:true,subtree:true,characterData:true});privAplicar();
