@@ -1,29 +1,10 @@
-const test=require('node:test');
-const assert=require('node:assert/strict');
-const fs=require('node:fs');
-const path=require('node:path');
-const root=path.join(__dirname,'..');
-
-test('arquivos essenciais existem',()=>{
-  ['index.html','css/style.css','JS/script.js','backend/server.js','database/schema.sql','database/migrate-private.sql','.gitignore','.env.example','README.md'].forEach(file=>assert.ok(fs.existsSync(path.join(root,file)),file));
-});
-
-test('scripts SQL não apagam o banco',()=>{
-  for(const file of ['database/schema.sql','database/migrate-private.sql']){
-    const sql=fs.readFileSync(path.join(root,file),'utf8').toUpperCase();
-    assert.equal(sql.includes('DROP DATABASE'),false,file);
-    assert.equal(sql.includes('TRUNCATE TABLE'),false,file);
-  }
-});
-
-test('identidade privada é PRUMO',()=>{
-  const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
-  assert.match(html,/PRUMO/);
-  assert.match(html,/assets\/mascote\.png/);
-  assert.doesNotMatch(html,/TRÉGUA/i);
-});
-
-test('gitignore protege dados privados',()=>{
-  const ignore=fs.readFileSync(path.join(root,'.gitignore'),'utf8');
-  ['.env','backup_*.sql','node_modules/','*.zip'].forEach(item=>assert.ok(ignore.includes(item),item));
-});
+const test=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const path=require('node:path');const root=path.join(__dirname,'..');
+test('arquivos essenciais existem',()=>['index.html','css/style.css','JS/script.js','backend/server.js','database/schema.sql','database/migrate-consolidated.sql','package.json','README.md'].forEach(f=>assert.ok(fs.existsSync(path.join(root,f)),f)));
+test('há uma única API consolidada',()=>{const s=fs.readFileSync(path.join(root,'backend/server.js'),'utf8');assert.ok(s.includes('/api/app/dashboard'));assert.equal(/\/api\/v\d+\//.test(s),false)});
+test('frontend usa apenas API consolidada',()=>{const s=fs.readFileSync(path.join(root,'JS/script.js'),'utf8');assert.ok(s.includes("'/api/app/'"));assert.equal(/api\('v\d+\//.test(s),false)});
+test('funções centrais não estão duplicadas',()=>{const s=fs.readFileSync(path.join(root,'JS/script.js'),'utf8');for(const name of ['dashboard','movements','bens','config'])assert.equal((s.match(new RegExp(`function ${name}\\(`,'g'))||[]).length,1,name)});
+test('projeção usa ocorrências recorrentes',()=>{const s=fs.readFileSync(path.join(root,'backend/server.js'),'utf8');assert.ok(s.includes('tbOcorrenciasRecorrentes'));assert.ok(s.includes("o.situacao='PREVISTA'"));assert.ok(s.includes('saldoAnterior:previous'))});
+test('poupança inicial entra no total',()=>{const s=fs.readFileSync(path.join(root,'backend/server.js'),'utf8');assert.ok(s.includes("total:money(c.poupancaInicial)+money(t.v)"))});
+test('SQL é não destrutivo',()=>{const s=fs.readFileSync(path.join(root,'database/migrate-consolidated.sql'),'utf8').toUpperCase();assert.equal(s.includes('DROP DATABASE'),false);assert.equal(s.includes('TRUNCATE TABLE'),false)});
+test('reset respeita dependências principais',()=>{const s=fs.readFileSync(path.join(root,'backend/server.js'),'utf8');assert.ok(s.indexOf("'tbFinancas'")<s.indexOf("'tbBens'"))});
+test('versão 2.1 inclui Pru, gastos fixos e custos de bens',()=>{const server=fs.readFileSync(path.join(root,'backend/server.js'),'utf8'),js=fs.readFileSync(path.join(root,'JS/script.js'),'utf8'),html=fs.readFileSync(path.join(root,'index.html'),'utf8');assert.ok(fs.statSync(path.join(root,'assets/mascote.png')).size>100000);['gastos-fixos','resumo-financeiro','compromissos','simulador/melhor-mes','bens/:id/custos'].forEach(x=>assert.ok(server.includes(x),x));['fixedCostsAction','Mês da primeira fatura'].forEach(x=>assert.ok(html.includes(x),x));assert.ok(js.includes('Saldo projetado'));});

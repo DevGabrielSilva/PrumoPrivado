@@ -89,3 +89,81 @@ CREATE INDEX IF NOT EXISTS idx_fatura_vencimento ON tbFaturas(dataVencimento,pag
 UPDATE tbFinancas
 SET situacao=CASE WHEN dataMovimentacao>CURRENT_DATE THEN 'PREVISTA' ELSE 'EFETIVADA' END
 WHERE situacao IS NULL;
+
+-- PRUMO PRIVADO v1.2
+ALTER TABLE tbFinancas ADD COLUMN IF NOT EXISTS codBem INT NULL;
+CREATE TABLE IF NOT EXISTS tbCustosBens(
+ codCusto INT AUTO_INCREMENT PRIMARY KEY,
+ codBem INT NOT NULL,
+ dataCusto DATE NOT NULL,
+ tipo ENUM('MANUTENCAO','REPARO','SEGURO','IMPOSTO','LICENCIAMENTO','DOCUMENTACAO','CONDOMINIO','REFORMA','VISTORIA','TAXA','OUTRO') NOT NULL,
+ descricao VARCHAR(120) NULL,
+ valor DECIMAL(12,2) NOT NULL,
+ situacao ENUM('PREVISTO','PAGO') NOT NULL DEFAULT 'PAGO',
+ observacao VARCHAR(255) NULL,
+ codFin INT NULL,
+ FOREIGN KEY(codBem) REFERENCES tbBens(codBem) ON DELETE CASCADE,
+ FOREIGN KEY(codFin) REFERENCES tbFinancas(codFin) ON DELETE SET NULL,
+ INDEX idx_custo_bem_data(codBem,dataCusto)
+);
+
+-- PRUMO PRIVADO v1.3
+-- Corrige recorrências antigas cujo término opcional foi preenchido automaticamente no mesmo dia do início.
+UPDATE tbFinancas
+SET dataFimRecorrencia=NULL
+WHERE recorrente=1
+  AND UPPER(TRIM(COALESCE(frequencia,'')))='MENSAL'
+  AND dataFimRecorrencia=dataInicioRecorrencia;
+
+-- PRUMO PRIVADO v1.4
+ALTER TABLE tbConfiguracoes ADD COLUMN IF NOT EXISTS reservaEmergencia DECIMAL(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE tbConfiguracoes ADD COLUMN IF NOT EXISTS alertaUSDAtivo BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE tbConfiguracoes ADD COLUMN IF NOT EXISTS alertaUSDValor DECIMAL(12,4) NOT NULL DEFAULT 5.0000;
+ALTER TABLE tbConfiguracoes ADD COLUMN IF NOT EXISTS alertaEURAtivo BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE tbConfiguracoes ADD COLUMN IF NOT EXISTS alertaEURValor DECIMAL(12,4) NOT NULL DEFAULT 6.0000;
+
+-- PRUMO PRIVADO v1.5
+ALTER TABLE tbConfiguracoes ADD COLUMN IF NOT EXISTS poupancaInicial DECIMAL(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE tbConfiguracoes ADD COLUMN IF NOT EXISTS configuracaoInicialConcluida BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE TABLE IF NOT EXISTS tbOcorrenciasRecorrentes(
+ codOcorrencia INT AUTO_INCREMENT PRIMARY KEY,
+ codFinModelo INT NOT NULL,
+ competencia CHAR(7) NOT NULL,
+ dataPrevista DATE NOT NULL,
+ valor DECIMAL(12,2) NOT NULL,
+ situacao ENUM('PREVISTA','EFETIVADA','CANCELADA') NOT NULL DEFAULT 'PREVISTA',
+ dataEfetivacao DATE NULL,
+ codFinEfetivada INT NULL,
+ observacao VARCHAR(255) NULL,
+ FOREIGN KEY(codFinModelo) REFERENCES tbFinancas(codFin) ON DELETE CASCADE,
+ FOREIGN KEY(codFinEfetivada) REFERENCES tbFinancas(codFin) ON DELETE SET NULL,
+ UNIQUE KEY uk_ocorrencia_modelo_competencia(codFinModelo,competencia),
+ INDEX idx_ocorrencia_competencia(competencia,situacao)
+);
+
+-- PRUMO PRIVADO 2.0 - AJUSTES CONSOLIDADOS
+ALTER TABLE tbConfiguracoes ADD COLUMN IF NOT EXISTS reservaEmergencia DECIMAL(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE tbConfiguracoes ADD COLUMN IF NOT EXISTS alertaUSDAtivo BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE tbConfiguracoes ADD COLUMN IF NOT EXISTS alertaUSDValor DECIMAL(12,4) NOT NULL DEFAULT 5.0000;
+ALTER TABLE tbConfiguracoes ADD COLUMN IF NOT EXISTS alertaEURAtivo BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE tbConfiguracoes ADD COLUMN IF NOT EXISTS alertaEURValor DECIMAL(12,4) NOT NULL DEFAULT 6.0000;
+ALTER TABLE tbConfiguracoes ADD COLUMN IF NOT EXISTS poupancaInicial DECIMAL(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE tbConfiguracoes ADD COLUMN IF NOT EXISTS configuracaoInicialConcluida BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE TABLE IF NOT EXISTS tbOcorrenciasRecorrentes(
+ codOcorrencia INT AUTO_INCREMENT PRIMARY KEY,
+ codFinModelo INT NOT NULL,
+ competencia CHAR(7) NOT NULL,
+ dataPrevista DATE NOT NULL,
+ valor DECIMAL(12,2) NOT NULL,
+ situacao ENUM('PREVISTA','EFETIVADA','CANCELADA') NOT NULL DEFAULT 'PREVISTA',
+ dataEfetivacao DATE NULL,
+ codFinEfetivada INT NULL,
+ observacao VARCHAR(255) NULL,
+ FOREIGN KEY(codFinModelo) REFERENCES tbFinancas(codFin) ON DELETE CASCADE,
+ FOREIGN KEY(codFinEfetivada) REFERENCES tbFinancas(codFin) ON DELETE SET NULL,
+ UNIQUE KEY uk_ocorrencia_modelo_competencia(codFinModelo,competencia),
+ INDEX idx_ocorrencia_competencia(competencia,situacao)
+);
+UPDATE tbFinancas SET dataFimRecorrencia=NULL
+WHERE recorrente=1 AND UPPER(TRIM(COALESCE(frequencia,'')))='MENSAL'
+AND dataFimRecorrencia=dataInicioRecorrencia;

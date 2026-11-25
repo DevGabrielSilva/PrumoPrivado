@@ -1,7 +1,7 @@
 {
   "name": "prumo-financas-private",
-  "version": "1.0.0",
-  "description": "Versão pessoal e privada do PRUMO",
+  "version": "2.1.0",
+  "description": "PRUMO Privado consolidado",
   "main": "backend/server.js",
   "type": "commonjs",
   "scripts": {
