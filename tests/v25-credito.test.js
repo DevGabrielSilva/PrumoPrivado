@@ -499,3 +499,15 @@ test('Movimentações: compra no crédito sai como parcela do mês (valor da par
     assert.ok(sqls.some((s) => s.includes('FROM tbFinancas f WHERE recorrente=0') && s.includes('NOT EXISTS(SELECT 1 FROM tbComprasCartao k WHERE k.codFin=f.codFin)')));
   } finally { pool.query = orig; }
 });
+
+test('Início do app: cria a coluna codFin se faltar; se já existe, não mexe; sem permissão, avisa sem derrubar', async () => {
+  const { garantirColunas } = require('../backend/services/schema');
+  const log = [];
+  assert.strictEqual(await garantirColunas({ query: async (s) => { log.push(s); return s.startsWith('SELECT') ? [] : {}; } }), true);
+  assert.ok(log.some((s) => s.startsWith('ALTER TABLE tbComprasCartao ADD COLUMN codFin')));
+  log.length = 0;
+  assert.strictEqual(await garantirColunas({ query: async (s) => { log.push(s); return [{ COLUMN_NAME: 'codFin' }]; } }), true);
+  assert.strictEqual(log.length, 1);
+  const w = console.warn; console.warn = () => {};
+  try { assert.strictEqual(await garantirColunas({ query: async (s) => { if (s.startsWith('ALTER')) throw Error('denied'); return []; } }), false); } finally { console.warn = w; }
+});
