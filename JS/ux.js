@@ -286,3 +286,20 @@ document.addEventListener('submit',async e=>{if(!e.target.matches('.cost-edit-fo
 (function(){const base=movActions;movActions=function(x){if(x.classeRegistro!=='PARCELA_CREDITO')return base(x);
   const compra={...x,valor:x.valorCompra,dataMovimentacao:String(x.dataCompra).slice(0,10),classeRegistro:'MOVIMENTACAO'};
   return base(compra).replace(/<button class="ghost" data-status-mov="[^"]*" data-next="[^"]*">[^<]*<\/button>/,'').replace('>Excluir<','>Excluir compra<')}})();
+
+// ---------- Cartões e faturas: só a fatura do mês / a vencer; as outras ficam escondidas ----------
+let faturasTodas=false;
+const faturas2=faturas;
+faturas=async function(){await faturas2();try{
+  const rows=await api0('faturas'),els=[...document.querySelectorAll('#faturaList .fat-row')],atual=mesAtual(),comp=x=>x.competencia||String(x.dataVencimento).slice(0,7);
+  const valor=x=>Number(x.valorInformado)?Number(x.valorTotal)||0:Number(x.comprasConhecidas)||0;
+  const abertas=rows.filter(x=>!Number(x.paga)&&comp(x)>=atual&&valor(x)>0);
+  const proxima=abertas.map(comp).sort()[0];
+  const visivel=x=>!Number(x.paga)&&comp(x)<atual&&valor(x)>0||comp(x)===atual||(!rows.some(y=>comp(y)===atual)&&comp(x)===proxima);
+  let ocultas=0;rows.forEach((x,i)=>{const el=els[i];if(!el)return;const oculta=!visivel(x);if(oculta)ocultas++;el.classList.toggle('hidden',oculta&&!faturasTodas)});
+  const lista=$('#faturaList'),total=abertas.reduce((a,x)=>a+Math.round(valor(x)*100),0)/100;
+  lista.querySelectorAll('.fat-total,.fat-mais').forEach(n=>n.remove());
+  lista.insertAdjacentHTML('afterbegin',`<small class="fat-total hint">A vencer: ${brl(total)} em ${abertas.length} ${abertas.length===1?'fatura':'faturas'}</small>`);
+  if(ocultas)lista.insertAdjacentHTML('beforeend',`<button class="ghost fat-mais" type="button" data-fat-mais>${faturasTodas?'Esconder outras faturas':`Mostrar outras faturas (${ocultas})`}</button>`);
+}catch{}};
+document.addEventListener('click',e=>{if(e.target.closest('[data-fat-mais]')){faturasTodas=!faturasTodas;faturas()}});
