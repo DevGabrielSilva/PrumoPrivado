@@ -251,10 +251,21 @@ faturas=async function(){await faturas1();try{const rows=await api0('faturas'),e
 })();
 
 // ---------- Bens: editar custo adicional ----------
-document.addEventListener('click',e=>{const b=e.target.closest('[data-edit-cost]');if(!b)return;
-  const c=JSON.parse(b.dataset.editCost),box=b.closest('[id^=asset-extra-]'),cr=c.formaPagamento==='CREDITO',tipos=['MANUTENCAO','REPARO','SEGURO','DOCUMENTACAO','LICENCIAMENTO','IMPOSTO','OUTRO'];
-  box.innerHTML=`<form class="cost-edit-form form-grid" data-cod="${c.codCusto}"><h4>Editar custo</h4>${cr?'<p class="hint">Custo no crédito: ao salvar, a compra e as parcelas na fatura são refeitas com os novos dados.</p>':''}<label>Data<input name="dataCusto" type="date" value="${String(c.dataCusto).slice(0,10)}"></label><label>Tipo<select name="tipo">${tipos.map(t=>`<option ${t===c.tipo?'selected':''}>${t}</option>`).join('')}</select></label><label>Descrição<input name="descricao" value="${esc(c.descricao||'')}"></label><label>Valor<input name="valor" class="money-input" value="${brl(c.valor)}"></label><label>Situação<select name="situacao" ${cr?'disabled':''}><option ${c.situacao==='PAGO'?'selected':''}>PAGO</option><option ${c.situacao==='PREVISTO'?'selected':''}>PREVISTO</option></select></label><button class="primary">Salvar</button><button class="ghost" type="button" data-cancel-edit-cost>Cancelar</button></form>`;
-  box.classList.remove('hidden');bind(box);if(cr)box.querySelector('[name=situacao]').insertAdjacentHTML('afterend','<input type="hidden" name="situacao" value="PAGO">');
+document.addEventListener('click',async e=>{const b=e.target.closest('[data-edit-cost]');if(!b)return;
+  const c=JSON.parse(b.dataset.editCost),box=b.closest('[id^=asset-extra-]'),tipos=['MANUTENCAO','REPARO','SEGURO','DOCUMENTACAO','LICENCIAMENTO','IMPOSTO','OUTRO'],formas=[['PIX','Pix'],['DEBITO','Débito'],['CREDITO','Crédito'],['DINHEIRO','Dinheiro'],['BOLETO','Boleto']],fp=c.formaPagamento||'PIX';
+  if(!cartoesCache.length)try{cartoesCache=await api0('cartoes')}catch{}
+  const cartoes=cartoesCache.filter(k=>k.ativo||String(k.codCartao)===String(c.codCartao)).map(k=>`<option value="${k.codCartao}" ${String(k.codCartao)===String(c.codCartao)?'selected':''}>${esc(k.nomeCartao)}</option>`).join('');
+  box.innerHTML=`<form class="cost-edit-form form-grid" data-cod="${c.codCusto}"><h4>Editar custo</h4><label>Data<input name="dataCusto" type="date" value="${String(c.dataCusto).slice(0,10)}"></label><label>Tipo<select name="tipo">${tipos.map(t=>`<option ${t===c.tipo?'selected':''}>${t}</option>`).join('')}</select></label><label>Descrição<input name="descricao" value="${esc(c.descricao||'')}"></label><label>Valor<input name="valor" class="money-input" value="${brl(c.valor)}"></label><label class="sit-label">Situação<select name="situacao"><option ${c.situacao==='PAGO'?'selected':''}>PAGO</option><option ${c.situacao==='PREVISTO'?'selected':''}>PREVISTO</option></select></label><label>Forma de pagamento<select name="formaPagamento">${formas.map(([v,t])=>`<option value="${v}" ${v===fp?'selected':''}>${t}</option>`).join('')}</select></label><div class="subfields credito-bem hidden"><label>Cartão<select name="codCartao">${cartoes||'<option value="">Cadastre um cartão primeiro</option>'}</select></label><label>Parcelado?<select name="quantidadeParcelas" class="parcelas-select"></select></label><label>Mês da primeira fatura<select name="primeiraFatura" class="mes-select"></select></label></div><button class="primary">Salvar</button><button class="ghost" type="button" data-cancel-edit-cost>Cancelar</button></form>`;
+  box.classList.remove('hidden');bind(box);
+  const form=box.querySelector('form'),mf=form.querySelector('[name=primeiraFatura]'),par=form.querySelector('.parcelas-select'),pag=form.querySelector('[name=formaPagamento]'),cartao=form.querySelector('[name=codCartao]'),data=form.querySelector('[name=dataCusto]'),sitL=form.querySelector('.sit-label'),sub=form.querySelector('.credito-bem');
+  popularParcelas(par);par.value=String(c.quantidadeParcelas||1);
+  const atual=c.primeiraFatura?String(c.primeiraFatura).slice(0,7):null;
+  for(let i=-12;i<=36;i++){const o=document.createElement('option');o.value=mesMais(mesAtual(),i);o.textContent=fullMonth(o.value);mf.appendChild(o)}
+  if(atual&&![...mf.options].some(o=>o.value===atual)){const o=document.createElement('option');o.value=atual;o.textContent=fullMonth(atual);mf.appendChild(o)}
+  if(atual)mf.value=atual;
+  const sugere=()=>{const k=cartoesCache.find(x=>String(x.codCartao)===cartao.value);mf.value=k?mesProvavel(data.value||today(),k.diaFechamento):mesAtual()};
+  const atualiza=()=>{const cr=pag.value==='CREDITO';sub.classList.toggle('hidden',!cr);sitL.classList.toggle('hidden',cr)};
+  pag.onchange=()=>{atualiza();if(pag.value==='CREDITO'&&!atual)sugere()};cartao.onchange=sugere;atualiza();
 });
 document.addEventListener('click',async e=>{if(e.target.closest('[data-cancel-edit-cost]')){await bens()}});
 document.addEventListener('submit',async e=>{if(!e.target.matches('.cost-edit-form'))return;e.preventDefault();e.stopImmediatePropagation();

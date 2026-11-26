@@ -306,6 +306,7 @@ test('Editar custo de bem: muda custo e a movimentação vinculada', async () =>
     async query(sql, p = []) {
       const s = String(sql).replace(/\s+/g, ' '); log.push({ s, p });
       if (s.startsWith('SELECT c.codCusto')) return [{ codCusto: 3, codFin: 8, dataCusto: '2026-11-26', valor: 900, formaPagamento: 'PIX' }];
+      if (s.startsWith('SELECT codCompra FROM tbComprasCartao')) return [];
       return {};
     },
   });
@@ -313,8 +314,8 @@ test('Editar custo de bem: muda custo e a movimentação vinculada', async () =>
     const r = await chamar('PUT', '/api/app/bens/custos/3', { dataCusto: '2026-11-25', tipo: 'SEGURO', descricao: 'Seguro Lindy', valor: 950, situacao: 'PREVISTO' });
     assert.strictEqual(r.status, 200);
     const c = log.find((x) => x.s.startsWith('UPDATE tbCustosBens')), f = log.find((x) => x.s.startsWith('UPDATE tbFinancas'));
-    assert.deepStrictEqual(c.p, ['2026-11-25', 'SEGURO', 'Seguro Lindy', 950, 'PREVISTO', '3']);
-    assert.deepStrictEqual(f.p, ['2026-11-25', 'Seguro Lindy', 950, 'PREVISTA', 8]);
+    assert.deepStrictEqual(c.p, ['2026-11-25', 'SEGURO', 'Seguro Lindy', 950, 'PREVISTO', 8, '3']);
+    assert.deepStrictEqual(f.p, ['2026-11-25', 'Seguro Lindy', 950, 'PREVISTA', 'PIX', null, null, null, 8]);
   } finally { pool.getConnection = orig; }
 });
 
@@ -385,7 +386,7 @@ function bancoCartao({ oficial = {}, financas = {} } = {}) {
   const fat = (id) => st.faturas.find((f) => f.codFatura === id);
   const q = async (sql, p = []) => {
     const s = String(sql).replace(/\s+/g, ' ');
-    if (s.startsWith('SELECT diaVencimento FROM tbCartoes') || s.startsWith('SELECT diaFechamento,diaVencimento')) return [{ diaVencimento: 10, diaFechamento: 3 }];
+    if (s.startsWith('SELECT diaVencimento FROM tbCartoes') || s.startsWith('SELECT diaFechamento,diaVencimento')) return p[0] == null ? [] : [{ diaVencimento: 10, diaFechamento: 3 }];
     if (s.startsWith('INSERT INTO tbComprasCartao')) {
       if (s.includes('codFin) VALUES')) { st.compras.push({ codCompra: ++st.seq, codCartao: p[0], dataCompra: p[1], descricao: p[2], categoria: p[3], valorTotal: p[4], quantidadeParcelas: p[5], codFin: p[8], chaveOrigem: null }); }
       else { st.compras.push({ codCompra: ++st.seq, codCartao: p[0], dataCompra: p[1], descricao: p[2], categoria: p[3], valorTotal: p[4], quantidadeParcelas: 1, chaveOrigem: p[7], codFin: null }); }
@@ -406,6 +407,9 @@ function bancoCartao({ oficial = {}, financas = {} } = {}) {
     if (s.startsWith('SELECT codFin,dataMovimentacao,descricao,valor')) { const f = st.financas[p[0]]; return f ? [{ codFin: Number(p[0]), ...f }] : []; }
     if (s.startsWith('UPDATE tbFinancas SET dataMovimentacao=?,tipo=?')) { const f = st.financas[p[11]]; Object.assign(f, { dataMovimentacao: p[0], descricao: p[2], valor: p[3], categoria: p[4] }); return {}; }
     if (s.startsWith('DELETE FROM tbFinancas WHERE codFin')) { delete st.financas[p[0]]; return {}; }
+    if (s.startsWith('SELECT c.codCusto,c.codBem,c.codFin')) { const f = st.financas[8]; return [{ codCusto: 3, codBem: 1, codFin: 8, formaPagamento: f.formaPagamento, codCartao: f.codCartao, quantidadeParcelas: f.quantidadeParcelas, primeiraFatura: f.primeiraFatura }]; }
+    if (s.startsWith('UPDATE tbFinancas SET dataMovimentacao=?,descricao=?,valor=?,situacao=?,formaPagamento=?')) { Object.assign(st.financas[p[8]], { dataMovimentacao: p[0], descricao: p[1], valor: p[2], formaPagamento: p[4], codCartao: p[5], quantidadeParcelas: p[6], primeiraFatura: p[7] }); return {}; }
+    if (s.startsWith('UPDATE tbCustosBens')) return {};
     if (s.startsWith('SELECT codFin FROM tbCustosBens')) return [{ codFin: 8 }];
     if (s.startsWith('DELETE FROM tbCustosBens')) return {};
     throw Error('consulta não prevista no teste: ' + s.slice(0, 90));
@@ -526,4 +530,40 @@ test('Conferir com o banco: confere só o campo preenchido; vazio não vira zero
   const zero = conferir({ saldo: 'R$ 0,00', poupanca: '' }, prumo); // zero digitado é conferido de verdade
   assert.strictEqual(zero.length, 1); assert.strictEqual(zero[0].dif, -170);
   assert.strictEqual(conferir({ saldo: 'R$ 170,00', poupanca: 'R$ 1.000,00' }, prumo).every((x) => x.dif === 0), true);
+});
+
+
+test('Editar custo de Bens: de Pix para crédito cria a compra e as parcelas na fatura (cartão e parcelas escolhidos)', async () => {
+  const st = bancoCartao({ financas: { 8: { dataMovimentacao: '2026-11-20', descricao: 'Seguro', valor: 600, formaPagamento: 'PIX', codCartao: null, quantidadeParcelas: null, primeiraFatura: null } } });
+  const r = await st.run(() => chamar('PUT', '/api/app/bens/custos/3', { dataCusto: '2026-11-20', tipo: 'SEGURO', descricao: 'Seguro', valor: 600, situacao: 'PAGO', formaPagamento: 'CREDITO', codCartao: 1, quantidadeParcelas: 3, primeiraFatura: '2026-12' }));
+  assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+  assert.strictEqual(st.compras.filter((c) => c.codFin === 8).length, 1);
+  assert.strictEqual(st.compras.find((c) => c.codFin === 8).quantidadeParcelas, 3);
+  assert.deepStrictEqual(['2026-12', '2027-01', '2027-02'].map((c) => st.total(c)), [200, 200, 200]);
+  assert.strictEqual(st.financas[8].formaPagamento, 'CREDITO');
+});
+
+test('Editar custo de Bens: mudar parcelas no crédito refaz as parcelas; de crédito para Pix remove a compra e o Outros se ajusta', async () => {
+  const st = bancoCartao({ oficial: { '2026-12': 1000 }, financas: { 8: { dataMovimentacao: '2026-11-20', descricao: 'Seguro', valor: 600, formaPagamento: 'CREDITO', codCartao: 1, quantidadeParcelas: 1, primeiraFatura: '2026-12-10' } } });
+  await st.run(async () => { await createCredit({ query: st.q }, { codCartao: 1, quantidadeParcelas: 1, valorTotal: 600, dataCompra: '2026-11-20', descricao: 'Seguro', categoria: 'Bens', dataPrimeiraParcela: '2026-12', codFin: 8 }); });
+  assert.strictEqual(st.outros('2026-12'), 400);
+  // 1x -> 2x: 300 em dez e 300 em jan; dez oficial 1000 => Outros 700
+  let r = await st.run(() => chamar('PUT', '/api/app/bens/custos/3', { dataCusto: '2026-11-20', tipo: 'SEGURO', descricao: 'Seguro', valor: 600, situacao: 'PAGO', formaPagamento: 'CREDITO', codCartao: 1, quantidadeParcelas: 2, primeiraFatura: '2026-12' }));
+  assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+  assert.strictEqual(st.compras.filter((c) => c.codFin === 8).length, 1);
+  assert.strictEqual(st.outros('2026-12'), 700);
+  assert.strictEqual(st.total('2027-01'), 300);
+  // crédito -> Pix: compra sai; o valor oficial da fatura volta todo para Outros
+  r = await st.run(() => chamar('PUT', '/api/app/bens/custos/3', { dataCusto: '2026-11-20', tipo: 'SEGURO', descricao: 'Seguro', valor: 600, situacao: 'PAGO', formaPagamento: 'PIX' }));
+  assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+  assert.strictEqual(st.compras.filter((c) => c.codFin === 8).length, 0);
+  assert.strictEqual(st.outros('2026-12'), 1000);
+  assert.strictEqual(st.total('2027-01'), 0);
+  assert.strictEqual(st.financas[8].formaPagamento, 'PIX'); assert.strictEqual(st.financas[8].codCartao, null);
+});
+
+test('Editar custo de Bens no crédito sem cartão válido é recusado', async () => {
+  const st = bancoCartao({ financas: { 8: { dataMovimentacao: '2026-11-20', descricao: 'Seguro', valor: 600, formaPagamento: 'PIX', codCartao: null, quantidadeParcelas: null, primeiraFatura: null } } });
+  const r = await st.run(() => chamar('PUT', '/api/app/bens/custos/3', { dataCusto: '2026-11-20', tipo: 'SEGURO', valor: 600, situacao: 'PAGO', formaPagamento: 'CREDITO', codCartao: null }));
+  assert.strictEqual(r.status, 400);
 });
