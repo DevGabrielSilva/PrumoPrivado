@@ -511,3 +511,19 @@ test('Início do app: cria a coluna codFin se faltar; se já existe, não mexe; 
   const w = console.warn; console.warn = () => {};
   try { assert.strictEqual(await garantirColunas({ query: async (s) => { if (s.startsWith('ALTER')) throw Error('denied'); return []; } }), false); } finally { console.warn = w; }
 });
+
+test('Conferir com o banco: confere só o campo preenchido; vazio não vira zero', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'JS', 'ux.js'), 'utf8');
+  const i = src.indexOf('function conferirCalculo'), j = src.indexOf('(function(){', i);
+  const val = (v) => Number(String(v || '').replace(/\D/g, '')) / 100;
+  const conferir = new Function('val', src.slice(i, j) + '; return conferirCalculo;')(val);
+  const prumo = { saldo: 170, poupanca: 1000 };
+  const soSaldo = conferir({ saldo: 'R$ 150,00', poupanca: '' }, prumo);
+  assert.strictEqual(soSaldo.length, 1); assert.strictEqual(soSaldo[0].campo, 'saldo'); assert.strictEqual(soSaldo[0].dif, -20);
+  const soPoup = conferir({ saldo: '', poupanca: 'R$ 1.200,00' }, prumo);
+  assert.strictEqual(soPoup.length, 1); assert.strictEqual(soPoup[0].campo, 'poupanca'); assert.strictEqual(soPoup[0].dif, 200);
+  assert.strictEqual(conferir({ saldo: '   ', poupanca: undefined }, prumo).length, 0);
+  const zero = conferir({ saldo: 'R$ 0,00', poupanca: '' }, prumo); // zero digitado é conferido de verdade
+  assert.strictEqual(zero.length, 1); assert.strictEqual(zero[0].dif, -170);
+  assert.strictEqual(conferir({ saldo: 'R$ 170,00', poupanca: 'R$ 1.000,00' }, prumo).every((x) => x.dif === 0), true);
+});

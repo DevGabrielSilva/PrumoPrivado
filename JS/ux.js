@@ -253,7 +253,7 @@ faturas=async function(){await faturas1();try{const rows=await api0('faturas'),e
 // ---------- Bens: editar custo adicional ----------
 document.addEventListener('click',e=>{const b=e.target.closest('[data-edit-cost]');if(!b)return;
   const c=JSON.parse(b.dataset.editCost),box=b.closest('[id^=asset-extra-]'),cr=c.formaPagamento==='CREDITO',tipos=['MANUTENCAO','REPARO','SEGURO','DOCUMENTACAO','LICENCIAMENTO','IMPOSTO','OUTRO'];
-  box.innerHTML=`<form class="cost-edit-form form-grid" data-cod="${c.codCusto}"><h4>Editar custo</h4>${cr?'<p class="hint">Custo no crédito: a compra já está na fatura. Só tipo e descrição podem mudar aqui; para data ou valor, exclua e lance de novo.</p>':''}<label>Data<input name="dataCusto" type="date" value="${String(c.dataCusto).slice(0,10)}" ${cr?'readonly':''}></label><label>Tipo<select name="tipo">${tipos.map(t=>`<option ${t===c.tipo?'selected':''}>${t}</option>`).join('')}</select></label><label>Descrição<input name="descricao" value="${esc(c.descricao||'')}"></label><label>Valor<input name="valor" class="money-input" value="${brl(c.valor)}" ${cr?'readonly':''}></label><label>Situação<select name="situacao" ${cr?'disabled':''}><option ${c.situacao==='PAGO'?'selected':''}>PAGO</option><option ${c.situacao==='PREVISTO'?'selected':''}>PREVISTO</option></select></label><button class="primary">Salvar</button><button class="ghost" type="button" data-cancel-edit-cost>Cancelar</button></form>`;
+  box.innerHTML=`<form class="cost-edit-form form-grid" data-cod="${c.codCusto}"><h4>Editar custo</h4>${cr?'<p class="hint">Custo no crédito: ao salvar, a compra e as parcelas na fatura são refeitas com os novos dados.</p>':''}<label>Data<input name="dataCusto" type="date" value="${String(c.dataCusto).slice(0,10)}"></label><label>Tipo<select name="tipo">${tipos.map(t=>`<option ${t===c.tipo?'selected':''}>${t}</option>`).join('')}</select></label><label>Descrição<input name="descricao" value="${esc(c.descricao||'')}"></label><label>Valor<input name="valor" class="money-input" value="${brl(c.valor)}"></label><label>Situação<select name="situacao" ${cr?'disabled':''}><option ${c.situacao==='PAGO'?'selected':''}>PAGO</option><option ${c.situacao==='PREVISTO'?'selected':''}>PREVISTO</option></select></label><button class="primary">Salvar</button><button class="ghost" type="button" data-cancel-edit-cost>Cancelar</button></form>`;
   box.classList.remove('hidden');bind(box);if(cr)box.querySelector('[name=situacao]').insertAdjacentHTML('afterend','<input type="hidden" name="situacao" value="PAGO">');
 });
 document.addEventListener('click',async e=>{if(e.target.closest('[data-cancel-edit-cost]')){await bens()}});
@@ -303,3 +303,21 @@ faturas=async function(){await faturas2();try{
   if(ocultas)lista.insertAdjacentHTML('beforeend',`<button class="ghost fat-mais" type="button" data-fat-mais>${faturasTodas?'Esconder outras faturas':`Mostrar outras faturas (${ocultas})`}</button>`);
 }catch{}};
 document.addEventListener('click',e=>{if(e.target.closest('[data-fat-mais]')){faturasTodas=!faturasTodas;faturas()}});
+
+// ---------- Conferir com o banco: dá para conferir só um campo (vazio = não conferir, nunca vira zero) ----------
+function conferirCalculo(entradas,prumo){
+  // entradas: {saldo,poupanca} em texto; vazio ou só espaços = não conferir.
+  const campos=[['saldo','Conta (saldo)',prumo.saldo],['poupanca','Poupança',prumo.poupanca]],out=[];
+  for(const[k,nome,atual]of campos){const t=String(entradas[k]??'').trim();if(t==='')continue;
+    const banco=val(t),dif=Math.round((banco-Number(atual))*100)/100;out.push({campo:k,nome,prumo:Number(atual),banco,dif})}
+  return out}
+(function(){
+  const a=$('#realBankBalance'),b=$('#realSavingsBalance'),btn=$('#calculateReconcile'),res=$('#reconcileResult'),reg=$('#registerReconcile');if(!a||!b||!btn)return;
+  [a,b].forEach(i=>{i.classList.remove('money-input');i.dataset.bind=1;i.value='';i.placeholder='Deixe vazio para não conferir';i.inputMode='numeric';
+    i.oninput=e=>{const d=i.value.replace(/\D/g,''),apagando=e&&String(e.inputType||'').startsWith('delete');i.value=d&&!(apagando&&Number(d)===0)?(Number(d)/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}):'';res.innerHTML=''}});
+  if(reg)reg.remove();
+  btn.onclick=async()=>{
+    if(!a.value.trim()&&!b.value.trim()){res.innerHTML='<p class="hint">Preencha ao menos um campo. O que ficar vazio não é conferido.</p>';return}
+    try{const d=await api0('dashboard'),r=conferirCalculo({saldo:a.value,poupanca:b.value},{saldo:d.saldo,poupanca:d.poupanca.total});
+      res.innerHTML=r.map(x=>`<article class="saldo-card"><small>${x.nome}</small><b>${x.dif===0?'Bate com o banco':(x.dif>0?'Banco tem '+brl(x.dif)+' a mais':'Banco tem '+brl(-x.dif)+' a menos')}</b><small>PRUMO: ${brl(x.prumo)} · Banco: ${brl(x.banco)}</small></article>`).join('')}
+    catch(e){toast(e.message,'negative')}}})();
