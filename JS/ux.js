@@ -112,8 +112,13 @@ document.addEventListener('click',e=>{if(e.target.closest('[data-edit-card]')){$
 const cards1=cards;cards=async function(){await cards1();vencimentoAuto()};
 faturas=async function(){
   const rows=await api0('faturas'),ex=rows.filter(x=>Number(x.excedente)>0),atual=mesAtual();
-  $('#faturaAlertas').innerHTML=ex.map(x=>`<div class="alert-line" role="alert"><span>${esc(x.nomeCartao)} · ${fullMonth(x.competencia||x.dataVencimento)}: você anotou ${brl(x.excedente)} a mais que a fatura. Revise as compras do mês ou corrija o total da fatura.</span><button class="ghost" data-page="movimentacoes">Revisar compras</button></div>`).join('');
-  $('#faturaList').innerHTML=rows.length?`<div class="fat-head"><span>Fatura</span><span>Total</span><span>Anotado</span><span>Outros</span></div>`+rows.map(x=>{const inf=Number(x.valorInformado),tot=Number(x.valorTotal)||0,an=Number(x.comprasConhecidas),pct=tot?Math.min(100,an/tot*100):100;return`<article class="fat-row ${(x.competencia||'')===atual?'atual':''}"><span class="fat-nome"><b>${esc(x.nomeCartao)}</b><small>${fullMonth(x.competencia||x.dataVencimento)}</small></span><span>${inf?brl(tot):`<button class="ghost" data-fatura-card="${x.codCartao}" data-comp="${x.competencia||String(x.dataVencimento).slice(0,7)}" data-venc="${String(x.dataVencimento).slice(0,10)}">Informar total</button>`}</span><span>${brl(an)}</span><span>${inf?brl(x.outros):'<small>-</small>'}</span>${inf?`<i class="fat-bar" title="Anotado x Outros"><u style="width:${pct}%"></u></i>`:''}</article>`}).join(''):'<p class="vazio">Nenhuma fatura ainda. Informe o total da fatura do cartão acima.</p>';
+  $('#faturaAlertas').innerHTML='';
+  const linha=x=>{const inf=Number(x.valorInformado),tot=Number(x.valorTotal)||0,an=Number(x.comprasConhecidas)||0,pago=Number(x.paga),pagar=inf?tot:an,falta=inf?Math.max(0,Math.round((tot-an)*100)/100):0,exc=inf?Math.max(0,Math.round((an-tot)*100)/100):0,pct=tot?Math.min(100,an/tot*100):0,comp=x.competencia||String(x.dataVencimento).slice(0,7);
+    const acao=pago?`<span class="fat-paga"><b class="selo-paga">Paga</b><button type="button" class="link" data-fatura-desfaz="${x.codFatura}">Desfazer</button></span>`:pagar>0?`<button type="button" class="ghost" data-fatura-paga="${x.codFatura}" data-valor="${pagar}">Marcar como paga</button>`:'';
+    const corpo=inf?`<div class="fat-valor"><b>${brl(tot)}</b><span>total da fatura</span></div><p class="fat-linha ${exc?'aviso':''}">${exc?`Você lançou ${brl(an)}, que é ${brl(exc)} a mais que a fatura. Confira os lançamentos do mês.`:an>0?`Você lançou ${brl(an)}. Faltam ${brl(falta)} para fechar a fatura (entram em "Outros").`:`Você não lançou nada. Os ${brl(tot)} entram em "Outros".`}</p><i class="fat-barra"><u style="width:${pct}%"></u></i>`
+      :`<div class="fat-valor"><b>${brl(an)}</b><span>lançado até agora</span></div><p class="fat-linha">Você ainda não informou o total real desta fatura. <button type="button" class="ghost" data-fatura-card="${x.codCartao}" data-comp="${comp}" data-venc="${String(x.dataVencimento).slice(0,10)}">Informar total</button></p>`;
+    return`<article class="fat-row ${comp===atual?'atual':''}"><div class="fat-topo"><span class="fat-nome"><b>${esc(x.nomeCartao)}</b><small>${fullMonth(comp)}</small></span>${acao}</div>${corpo}</article>`};
+  $('#faturaList').innerHTML=rows.length?rows.map(linha).join(''):'<p class="vazio">Nenhuma fatura ainda. Informe o total da fatura do cartão acima.</p>';
 };
 document.addEventListener('click',e=>{const b=e.target.closest('[data-fatura-card]');if(b)setTimeout(vencimentoAuto,50)});
 
@@ -217,7 +222,7 @@ document.addEventListener('click',async e=>{
   if(d){if(!confirm('Desfazer o pagamento? O valor volta para o seu saldo.'))return;try{await api('faturas/'+d.dataset.faturaDesfaz+'/paga',{method:'PATCH',body:JSON.stringify({paga:false})});toast('Pagamento desfeito.','positive');await dashboard();await faturas()}catch(x){toast(x.message,'negative')}}
 });
 const faturas1=faturas;
-faturas=async function(){await faturas1();try{const rows=await api0('faturas'),els=[...document.querySelectorAll('#faturaList .fat-row')];rows.forEach((x,i)=>{const el=els[i];if(!el)return;const tot=Number(x.valorInformado)?Number(x.valorTotal):Number(x.comprasConhecidas);el.insertAdjacentHTML('beforeend',Number(x.paga)?`<span class="fat-paga"><small>Paga</small> <button class="ghost" data-fatura-desfaz="${x.codFatura}">Desfazer</button></span>`:tot>0?`<button class="ghost" data-fatura-paga="${x.codFatura}" data-valor="${tot}">Marcar como paga</button>`:'')})}catch{}};
+faturas=async function(){await faturas1()};
 
 // ---------- Configurações financeiras em 3 blocos + "Conferir com o banco" ----------
 (function(){
@@ -310,8 +315,8 @@ faturas=async function(){await faturas2();try{
   let ocultas=0;rows.forEach((x,i)=>{const el=els[i];if(!el)return;const oculta=!visivel(x);if(oculta)ocultas++;el.classList.toggle('hidden',oculta&&!faturasTodas)});
   const lista=$('#faturaList'),total=abertas.reduce((a,x)=>a+Math.round(valor(x)*100),0)/100;
   lista.querySelectorAll('.fat-total,.fat-mais').forEach(n=>n.remove());
-  lista.insertAdjacentHTML('afterbegin',`<small class="fat-total hint">A vencer: ${brl(total)} em ${abertas.length} ${abertas.length===1?'fatura':'faturas'}</small>`);
-  if(ocultas)lista.insertAdjacentHTML('beforeend',`<button class="ghost fat-mais" type="button" data-fat-mais>${faturasTodas?'Esconder outras faturas':`Mostrar outras faturas (${ocultas})`}</button>`);
+  lista.insertAdjacentHTML('afterbegin',`<p class="fat-total">Faturas em aberto: <b>${brl(total)}</b> (${abertas.length})</p>`);
+  if(ocultas)lista.insertAdjacentHTML('beforeend',`<button class="ghost fat-mais" type="button" data-fat-mais>${faturasTodas?'Esconder as outras faturas':`Ver outras faturas (${ocultas})`}</button>`);
 }catch{}};
 document.addEventListener('click',e=>{if(e.target.closest('[data-fat-mais]')){faturasTodas=!faturasTodas;faturas()}});
 
@@ -332,3 +337,15 @@ function conferirCalculo(entradas,prumo){
     try{const d=await api0('dashboard'),r=conferirCalculo({saldo:a.value,poupanca:b.value},{saldo:d.saldo,poupanca:d.poupanca.total});
       res.innerHTML=r.map(x=>`<article class="saldo-card"><small>${x.nome}</small><b>${x.dif===0?'Bate com o banco':(x.dif>0?'Banco tem '+brl(x.dif)+' a mais':'Banco tem '+brl(-x.dif)+' a menos')}</b><small>PRUMO: ${brl(x.prumo)} · Banco: ${brl(x.banco)}</small></article>`).join('')}
     catch(e){toast(e.message,'negative')}}})();
+
+
+// ---------- Cartões e faturas: tela simplificada ----------
+(function(){
+  const f=$('#billForm');if(!f)return;
+  const rot=(n,t)=>{const l=f.querySelector(`[name=${n}]`)?.closest('label');if(l&&l.firstChild)l.firstChild.textContent=t};
+  rot('codCartao','Cartão');rot('competencia','Mês da fatura');rot('dataVencimento','Vencimento');rot('valorTotal','Total da fatura (valor que está no banco)');
+  const bt=f.querySelector('button.primary');if(bt)bt.textContent='Salvar total da fatura';
+  const art=f.closest('article'),h=art&&art.querySelector('h3');if(h)h.textContent='Informar o total de uma fatura';
+  const sec=$('#cartoes'),fat=$('#faturaList').closest('.panel');if(sec&&fat){const h3=fat.querySelector('h3');if(h3)h3.textContent='Faturas';sec.prepend(fat)}
+  const nb=$('#newCardBtn');if(nb){nb.textContent='+ Novo cartão'}
+})();

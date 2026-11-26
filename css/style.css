@@ -78,12 +78,6 @@ td small,.mobile-record h3 small{display:block;color:var(--muted);font-weight:40
 .horizon{display:flex;align-items:center;gap:8px;color:#fff;font-weight:600}.horizon select{width:auto}
 .forecast-mais{display:none;width:100%;margin-top:8px}
 .alert-line{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
-.fat-head,.fat-row{display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:10px;align-items:center;padding:10px 6px}
-.fat-head{color:var(--muted);font-size:13px;font-weight:700;border-bottom:1px solid var(--line)}
-.fat-row{border-bottom:1px solid var(--line);position:relative;padding-bottom:16px}
-.fat-row.atual{background:#e7f6f3;border-radius:10px}
-.fat-nome small{display:block;color:var(--muted)}
-.fat-bar{position:absolute;left:6px;right:6px;bottom:5px;height:5px;border-radius:5px;background:#f2c46d;overflow:hidden}.fat-bar u{display:block;height:100%;background:var(--primary2)}
 #billForm{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));align-items:end}
 #billForm .primary{min-height:46px}
 .file-btn{display:inline-flex;align-items:center;justify-content:center;padding:12px 14px;border-radius:10px;border:1px solid var(--line);cursor:pointer;color:var(--primary);font-weight:600;min-height:46px;text-align:center}
@@ -109,7 +103,6 @@ td small,.mobile-record h3 small{display:block;color:var(--muted);font-weight:40
   .pru-bubble{bottom:140px!important}
   .mov-top{grid-template-columns:1fr}
   .mes-nav{min-width:0;width:100%}
-  .fat-head,.fat-row{grid-template-columns:1.3fr 1fr 1fr}.fat-head span:nth-child(4),.fat-row>span:nth-child(4){display:none}
   .forecast:not(.todos) .forecast-item:nth-child(n+4){display:none}
   .forecast{flex-direction:column;overflow:visible}.forecast-item{width:100%}
   .forecast-mais{display:block}
@@ -121,3 +114,24 @@ td small,.mobile-record h3 small{display:block;color:var(--muted);font-weight:40
 .mes-nav{min-width:0}
 @media(max-width:720px){.top{flex-wrap:wrap;gap:8px}.header-actions{display:flex;flex-wrap:wrap;gap:8px;width:100%}.header-actions .primary{flex:1}}
 .cfg-bloco summary{cursor:pointer;display:flex;flex-direction:column;gap:2px;list-style:none}.cfg-bloco summary::-webkit-details-marker{display:none}.cfg-bloco summary small{color:var(--muted,#667);font-weight:400}.cfg-bloco[open] summary{margin-bottom:12px}.cfg-bloco summary b::after{content:" ▸";color:var(--muted,#667)}.cfg-bloco[open] summary b::after{content:" ▾"}
+
+/* Cartões e faturas: uma fatura = um cartão simples */
+#faturaList{display:grid;gap:12px}
+.fat-row{border:1px solid var(--line);border-radius:14px;padding:16px;background:var(--card2);color:var(--text)}
+.fat-row.atual{border-color:var(--primary2);box-shadow:inset 4px 0 0 var(--primary2)}
+.fat-topo{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.fat-nome b{display:block;font-size:17px}.fat-nome small{color:var(--muted);font-size:14px}
+.fat-valor{margin:10px 0 2px}.fat-valor b{display:block;font-size:30px;line-height:1.1}.fat-valor span{color:var(--muted);font-size:14px}
+.fat-linha{margin:6px 0 10px;font-size:15px;line-height:1.4;color:var(--text)}.fat-linha.aviso{color:#d9374f;font-weight:700}
+.fat-linha button{margin-left:6px;width:auto;min-height:0;padding:7px 14px;font-size:14px}
+.fat-barra{display:block;height:8px;border-radius:8px;background:rgba(242,196,109,.55);overflow:hidden}.fat-barra u{display:block;height:100%;background:var(--primary2)}
+.fat-row button.ghost{width:auto;min-height:0;padding:9px 16px;font-size:15px;border:1px solid var(--line)}
+.fat-paga{display:flex;align-items:center;gap:10px}
+.selo-paga{background:rgba(15,138,126,.2);color:var(--text);border-radius:99px;padding:4px 12px;font-size:13px}
+.fat-paga .link{width:auto;min-height:0;background:none;border:0;padding:4px 6px;color:var(--muted);text-decoration:underline;font-size:14px}
+.fat-total{margin:0 0 12px;font-size:15px;color:var(--text)}
+.fat-mais{margin-top:12px;width:auto}
+#cartoes label:not(.file-btn){color:var(--text)}
+#cartoes>.panel,#cartoes>.grid2{margin-bottom:16px}
+.fat-row,.fat-total{font-family:inherit}.fat-linha,.fat-valor,.fat-nome{font-family:inherit}
+.fat-row p,.fat-total{font-family:Inter,'Segoe UI',Arial,sans-serif}
