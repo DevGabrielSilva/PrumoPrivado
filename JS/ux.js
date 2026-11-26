@@ -142,8 +142,9 @@ document.addEventListener('click',e=>{if(!e.target.closest('[data-cost-asset]'))
   if(!cartoesCache.length)try{cartoesCache=await api0('cartoes')}catch{}
   const cartoes=cartoesCache.filter(c=>c.ativo).map(c=>`<option value="${c.codCartao}">${esc(c.nomeCartao)}</option>`).join('');
   const sit=form.querySelector('[name=situacao]').closest('label');
-  sit.insertAdjacentHTML('afterend',`<label>Forma de pagamento<select name="formaPagamento"><option value="PIX">Pix</option><option value="DEBITO">Débito</option><option value="CREDITO">Crédito</option><option value="DINHEIRO">Dinheiro</option><option value="BOLETO">Boleto</option></select></label><div class="subfields credito-bem hidden"><label>Cartão<select name="codCartao">${cartoes||'<option value="">Cadastre um cartão primeiro</option>'}</select></label><label>Parcelado?<select name="quantidadeParcelas" class="parcelas-select"></select></label><label>Mês da primeira fatura<select name="primeiraFatura" class="mes-select"></select></label></div>`);
+  sit.insertAdjacentHTML('afterend',`<label>Forma de pagamento<select name="formaPagamento"><option value="PIX">Pix</option><option value="DEBITO">Débito</option><option value="CREDITO">Crédito</option><option value="DINHEIRO">Dinheiro</option><option value="BOLETO">Boleto</option></select></label><div class="subfields credito-bem hidden"><label>Cartão<select name="codCartao">${cartoes||'<option value="">Cadastre um cartão primeiro</option>'}</select></label><label>Parcelado?<select name="quantidadeParcelas" class="parcelas-select"></select></label><label>Mês da primeira fatura<select name="primeiraFatura" class="mes-select"></select></label></div>${campoCustoFixo(0)}`);
   popularParcelas(form.querySelector('.parcelas-select'));
+  ligarSeguro(form,true);
   const mf=form.querySelector('[name=primeiraFatura]');for(let i=-1;i<=24;i++){const o=document.createElement('option');o.value=mesMais(mesAtual(),i);o.textContent=fullMonth(o.value);mf.appendChild(o)}
   const box=form.querySelector('.credito-bem'),pag=form.querySelector('[name=formaPagamento]'),cartao=form.querySelector('[name=codCartao]'),data=form.querySelector('[name=dataCusto]'),sitSel=form.querySelector('[name=situacao]');
   const atualiza=()=>{const cr=pag.value==='CREDITO';box.classList.toggle('hidden',!cr);sit.classList.toggle('hidden',cr);if(cr){const c=cartoesCache.find(x=>String(x.codCartao)===cartao.value);mf.value=c?mesProvavel(data.value||today(),c.diaFechamento):mesAtual()}};
@@ -265,6 +266,7 @@ document.addEventListener('click',async e=>{const b=e.target.closest('[data-edit
   const cartoes=cartoesCache.filter(k=>k.ativo||String(k.codCartao)===String(c.codCartao)).map(k=>`<option value="${k.codCartao}" ${String(k.codCartao)===String(c.codCartao)?'selected':''}>${esc(k.nomeCartao)}</option>`).join('');
   box.innerHTML=`<form class="cost-edit-form form-grid" data-cod="${c.codCusto}"><h4>Editar custo</h4><label>Data<input name="dataCusto" type="date" value="${String(c.dataCusto).slice(0,10)}"></label><label>Tipo<select name="tipo">${tipos.map(t=>`<option ${t===c.tipo?'selected':''}>${t}</option>`).join('')}</select></label><label>Descrição<input name="descricao" value="${esc(c.descricao||'')}"></label><label>Valor<input name="valor" class="money-input" value="${brl(c.valor)}"></label><label class="sit-label">Situação<select name="situacao"><option ${c.situacao==='PAGO'?'selected':''}>PAGO</option><option ${c.situacao==='PREVISTO'?'selected':''}>PREVISTO</option></select></label><label>Forma de pagamento<select name="formaPagamento">${formas.map(([v,t])=>`<option value="${v}" ${v===fp?'selected':''}>${t}</option>`).join('')}</select></label><div class="subfields credito-bem hidden"><label>Cartão<select name="codCartao">${cartoes||'<option value="">Cadastre um cartão primeiro</option>'}</select></label><label>Parcelado?<select name="quantidadeParcelas" class="parcelas-select"></select></label><label>Mês da primeira fatura<select name="primeiraFatura" class="mes-select"></select></label></div><button class="primary">Salvar</button><button class="ghost" type="button" data-cancel-edit-cost>Cancelar</button></form>`;
   box.classList.remove('hidden');bind(box);
+  box.querySelector('[name=formaPagamento]').closest('label').insertAdjacentHTML('beforebegin',campoCustoFixo(c.custoFixo));ligarSeguro(box.querySelector('form'),false);
   const form=box.querySelector('form'),mf=form.querySelector('[name=primeiraFatura]'),par=form.querySelector('.parcelas-select'),pag=form.querySelector('[name=formaPagamento]'),cartao=form.querySelector('[name=codCartao]'),data=form.querySelector('[name=dataCusto]'),sitL=form.querySelector('.sit-label'),sub=form.querySelector('.credito-bem');
   popularParcelas(par);par.value=String(c.quantidadeParcelas||1);
   const atual=c.primeiraFatura?String(c.primeiraFatura).slice(0,7):null;
@@ -351,4 +353,13 @@ function conferirCalculo(entradas,prumo){
   const art=f.closest('article'),h=art&&art.querySelector('h3');if(h)h.textContent='Informar o total de uma fatura';
   const sec=$('#cartoes'),fat=$('#faturaList').closest('.panel');if(sec&&fat){const h3=fat.querySelector('h3');if(h3)h3.textContent='Faturas';sec.prepend(fat)}
   const nb=$('#newCardBtn');if(nb){nb.textContent='+ Novo cartão'}
+})();
+
+// ---------- "Conta como custo fixo": seguro, IPVA etc. entram no custo fixo mensal como total/12 ----------
+function campoCustoFixo(v){return `<label class="campo-custo-fixo">Conta como custo fixo?<select name="custoFixo"><option value="0" ${String(v)==='1'?'':'selected'}>Não</option><option value="1" ${String(v)==='1'?'selected':''}>Sim, dividir por 12</option></select></label>`}
+function ligarSeguro(form,pre){const t=form.querySelector('[name=tipo]'),c=form.querySelector('[name=custoFixo]');if(!t||!c)return;if(pre&&t.value==='SEGURO')c.value='1';t.addEventListener('change',()=>{if(t.value==='SEGURO')c.value='1'})}
+(function(){
+  const f=$('#movForm'),lab=f.formaPagamento.closest('label');lab.insertAdjacentHTML('afterend',campoCustoFixo(0));
+  const campo=f.querySelector('.campo-custo-fixo'),ver=()=>{const d=f.tipo.value==='DESPESA';campo.classList.toggle('hidden',!d);if(!d)f.custoFixo.value='0'};
+  f.addEventListener('change',e=>{if(e.target.name==='tipo')ver()});new MutationObserver(ver).observe($('#movFormPanel'),{attributes:true,attributeFilter:['class']});ver();
 })();

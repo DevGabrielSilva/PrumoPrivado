@@ -1,6 +1,16 @@
 // Garante, ao iniciar, as colunas que o app precisa. Se o banco ainda não tem (migração não rodada), cria sozinho.
 // Se o usuário do banco não tiver permissão de ALTER, avisa no terminal o comando para rodar manualmente.
+async function garantirCustoFixo(pool){
+  try{
+    const c=await pool.query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tbFinancas' AND COLUMN_NAME='custoFixo'");
+    if(c.length)return;
+    await pool.query('ALTER TABLE tbFinancas ADD COLUMN custoFixo TINYINT(1) NOT NULL DEFAULT 0');
+    await pool.query("UPDATE tbFinancas f JOIN tbCustosBens b ON b.codFin=f.codFin SET f.custoFixo=1 WHERE b.tipo='SEGURO'");
+    console.log('Banco atualizado: coluna tbFinancas.custoFixo criada; seguros de Bens já ficaram marcados como custo fixo.');
+  }catch(e){console.warn('ATENÇÃO: não consegui criar tbFinancas.custoFixo ('+e.message+'). Rode: mariadb -u root -p dbGabiru < database/migrate-consolidated.sql')}
+}
 async function garantirColunas(pool){
+  await garantirCustoFixo(pool);
   try{
     const cols=await pool.query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tbComprasCartao' AND COLUMN_NAME='codFin'");
     if(cols.length)return true;

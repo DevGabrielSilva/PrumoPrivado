@@ -181,3 +181,6 @@ ALTER TABLE tbComprasCartao ADD COLUMN IF NOT EXISTS codFin INT NULL;
 UPDATE tbComprasCartao x JOIN tbFinancas f ON f.formaPagamento='CREDITO' AND f.tipo='DESPESA' AND f.recorrente=0 AND f.codCartao=x.codCartao AND f.dataMovimentacao=x.dataCompra AND f.descricao=x.descricao AND f.valor=x.valorTotal
 SET x.codFin=f.codFin WHERE x.codFin IS NULL AND x.chaveOrigem IS NULL
   AND (SELECT COUNT(*) FROM tbFinancas g WHERE g.formaPagamento='CREDITO' AND g.tipo='DESPESA' AND g.recorrente=0 AND g.codCartao=x.codCartao AND g.dataMovimentacao=x.dataCompra AND g.descricao=x.descricao AND g.valor=x.valorTotal)=1;
+
+-- v2.6: marcador "Conta como custo fixo" (seguro, IPVA etc.: valor total / 12 no custo fixo mensal)
+ALTER TABLE tbFinancas ADD COLUMN IF NOT EXISTS custoFixo TINYINT(1) NOT NULL DEFAULT 0;

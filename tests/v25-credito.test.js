@@ -388,6 +388,50 @@ test('Custos antigos de Bens no crédito: liga a compra existente, cria as parce
   const r2 = await religarCustosBens(pool2);
   assert.strictEqual(r2.ligados + r2.criados, 0, 'rodar de novo não cria nada');
 });
+test('Custo fixo marcado (seguro etc.): total/12 entra no custo fixo mensal e muda o "Livre para gastar"; saldo não muda', async () => {
+  const orig = pool.query; let janela = null;
+  try {
+    const res = {};
+    for (const marcado of [0, 1200]) {
+      pool.query = async (sql, p = []) => {
+        const s = String(sql).replace(/\s+/g, ' ');
+        if (s.includes('custoFixo=1') && s.includes('COUNT(*)')) { janela = p; return [{ v: marcado, n: marcado ? 1 : 0 }]; }
+        if (s.includes("origem='GASTO_FIXO' AND situacao<>'CANCELADA'") && s.includes('SUM(valor)')) return [{ v: 1000 }];
+        if (s.includes("tipo='RECEITA'")) return [{ v: 5000 }];
+        return [{ v: 0, entradas: 0, saidas: 0 }];
+      };
+      res[marcado] = (await chamar('GET', '/api/app/resumo-financeiro')).json.dados;
+    }
+    assert.strictEqual(res[0].custoFixo, 1000);
+    assert.strictEqual(res[1200].custoFixo, 1100, '1000 de gastos fixos + 1200/12');
+    assert.strictEqual(res[1200].custoFixoAnuais, 100);
+    assert.strictEqual(res[0].saldoLivre - res[1200].saldoLivre, 100);
+    assert.ok(/^\d{4}-\d{2}-01$/.test(janela[0]) && /^\d{4}-\d{2}-01$/.test(janela[1]), 'janela de 12 meses por mês');
+  } finally { pool.query = orig; }
+});
+
+test('Custo de Bem: seguro já nasce marcado como custo fixo; outros tipos só se marcar', async () => {
+  const gravado = [];
+  const orig = pool.getConnection;
+  pool.getConnection = async () => ({
+    async beginTransaction() {}, async commit() {}, async rollback() {}, release() {},
+    async query(sql, p = []) {
+      const s = String(sql).replace(/\s+/g, ' ');
+      if (s.startsWith('INSERT INTO tbFinancas')) { gravado.push(p[p.length - 1]); return { insertId: 9 }; }
+      if (s.startsWith('INSERT INTO tbCustosBens')) return { insertId: 3 };
+      return [];
+    },
+  });
+  try {
+    const base = { dataCusto: '2026-10-05', valor: 300, situacao: 'PAGO', formaPagamento: 'PIX' };
+    await chamar('POST', '/api/app/bens/1/custos', { ...base, tipo: 'SEGURO' });
+    await chamar('POST', '/api/app/bens/1/custos', { ...base, tipo: 'REPARO' });
+    await chamar('POST', '/api/app/bens/1/custos', { ...base, tipo: 'IMPOSTO', custoFixo: '1' });
+    await chamar('POST', '/api/app/bens/1/custos', { ...base, tipo: 'SEGURO', custoFixo: '0' });
+    assert.deepStrictEqual(gravado, [1, 0, 1, 0]);
+  } finally { pool.getConnection = orig; }
+});
+
 
 // ---- Item 7: fuso (America/Sao_Paulo) e edição de custo de bem ----
 const { hoje, mesAtual } = require('../backend/helpers');
@@ -428,7 +472,7 @@ test('Editar custo de bem: muda custo e a movimentação vinculada', async () =>
     assert.strictEqual(r.status, 200);
     const c = log.find((x) => x.s.startsWith('UPDATE tbCustosBens')), f = log.find((x) => x.s.startsWith('UPDATE tbFinancas'));
     assert.deepStrictEqual(c.p, ['2026-11-25', 'SEGURO', 'Seguro Lindy', 950, 'PREVISTO', 8, '3']);
-    assert.deepStrictEqual(f.p, ['2026-11-25', 'Seguro Lindy', 950, 'PREVISTA', 'PIX', null, null, null, 8]);
+    assert.deepStrictEqual(f.p, ['2026-11-25', 'Seguro Lindy', 950, 'PREVISTA', 'PIX', null, null, null, 1, 8]);
   } finally { pool.getConnection = orig; }
 });
 
@@ -518,10 +562,10 @@ function bancoCartao({ oficial = {}, financas = {} } = {}) {
     if (s.startsWith('DELETE FROM tbParcelasCartao WHERE codCompra')) { st.parcelas = st.parcelas.filter((x) => x.codCompra !== p[0]); return {}; }
     if (s.startsWith('DELETE FROM tbComprasCartao WHERE codCompra')) { st.compras = st.compras.filter((x) => x.codCompra !== p[0]); return {}; }
     if (s.startsWith('SELECT codFin,dataMovimentacao,descricao,valor')) { const f = st.financas[p[0]]; return f ? [{ codFin: Number(p[0]), ...f }] : []; }
-    if (s.startsWith('UPDATE tbFinancas SET dataMovimentacao=?,tipo=?')) { const f = st.financas[p[11]]; Object.assign(f, { dataMovimentacao: p[0], descricao: p[2], valor: p[3], categoria: p[4] }); return {}; }
+    if (s.startsWith('UPDATE tbFinancas SET dataMovimentacao=?,tipo=?')) { const f = st.financas[p[12]]; Object.assign(f, { dataMovimentacao: p[0], descricao: p[2], valor: p[3], categoria: p[4] }); return {}; }
     if (s.startsWith('DELETE FROM tbFinancas WHERE codFin')) { delete st.financas[p[0]]; return {}; }
     if (s.startsWith('SELECT c.codCusto,c.codBem,c.codFin')) { const f = st.financas[8]; return [{ codCusto: 3, codBem: 1, codFin: 8, formaPagamento: f.formaPagamento, codCartao: f.codCartao, quantidadeParcelas: f.quantidadeParcelas, primeiraFatura: f.primeiraFatura }]; }
-    if (s.startsWith('UPDATE tbFinancas SET dataMovimentacao=?,descricao=?,valor=?,situacao=?,formaPagamento=?')) { Object.assign(st.financas[p[8]], { dataMovimentacao: p[0], descricao: p[1], valor: p[2], formaPagamento: p[4], codCartao: p[5], quantidadeParcelas: p[6], primeiraFatura: p[7] }); return {}; }
+    if (s.startsWith('UPDATE tbFinancas SET dataMovimentacao=?,descricao=?,valor=?,situacao=?,formaPagamento=?')) { Object.assign(st.financas[p[9]], { dataMovimentacao: p[0], descricao: p[1], valor: p[2], formaPagamento: p[4], codCartao: p[5], quantidadeParcelas: p[6], primeiraFatura: p[7] }); return {}; }
     if (s.startsWith('UPDATE tbCustosBens')) return {};
     if (s.startsWith('SELECT codFin FROM tbCustosBens')) return [{ codFin: 8 }];
     if (s.startsWith('DELETE FROM tbCustosBens')) return {};
@@ -624,7 +668,7 @@ test('Início do app: cria a coluna codFin se faltar; se já existe, não mexe; 
   assert.ok(log.some((s) => s.startsWith('ALTER TABLE tbComprasCartao ADD COLUMN codFin')));
   log.length = 0;
   assert.strictEqual(await garantirColunas({ query: async (s) => { log.push(s); return [{ COLUMN_NAME: 'codFin' }]; } }), true);
-  assert.strictEqual(log.length, 1);
+  assert.ok(!log.some((x) => /^(ALTER|UPDATE)/.test(x)), 'coluna já existe: não altera nada');
   const w = console.warn; console.warn = () => {};
   try { assert.strictEqual(await garantirColunas({ query: async (s) => { if (s.startsWith('ALTER')) throw Error('denied'); return []; } }), false); } finally { console.warn = w; }
 });
