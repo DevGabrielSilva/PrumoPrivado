@@ -78,14 +78,17 @@ function movLinha(x){
   const trav=x.classeRegistro==='OUTROS_FATURA',sub=[x.categoria,pagLabel(x),x.classeRegistro==='OCORRENCIA'?'Recorrência':''].filter(Boolean).join(' · ');
   const acoes=trav?'<div class="record-actions"><button class="ghost" data-page="cartoes">Ver fatura</button></div>':movActions(x);
   const desc=`${esc(x.descricao)}${trav?' <span class="lock" title="Vem da fatura. Para mudar, ajuste o total da fatura em Cartões e faturas.">🔒</span>':''}<small>${esc(sub)}${trav?(sub?' · ':'')+'Calculado pela fatura':''}</small>`;
-  return{desc,acoes,trav,sit:`<span class="sit sit-${String(x.situacao).toLowerCase()}">${SIT[x.situacao]||x.situacao}</span>`};
+  const est=x.estimativaCartao;return{desc:est?desc.replace('</small>',`${sub?' · ':''}${x.faturaOficial?'já está no total da fatura':Number(x.valorAbatido)>0?'abatido '+brl(x.valorAbatido)+' por compras lançadas · falta '+brl(x.valorRestante):'estimativa dentro da fatura'}</small>`):desc,acoes,trav,sit:est?'<span class="sit sit-prevista">Estimativa no cartão</span>':`<span class="sit sit-${String(x.situacao).toLowerCase()}">${SIT[x.situacao]||x.situacao}</span>`};
 }
+// Recorrência: "Efetivar" quando prevista, "Desfazer" quando já efetivada, "Reativar" quando cancelada.
+const movActions0=movActions;
+movActions=function(x){let h=movActions0(x);if(x.classeRegistro==='OCORRENCIA'){const next=x.situacao==='EFETIVADA'||x.situacao==='CANCELADA'?'PREVISTA':'EFETIVADA',txt=x.situacao==='EFETIVADA'?'Desfazer':x.situacao==='CANCELADA'?'Reativar':'Efetivar';h=h.replace(/<button class="ghost" data-status-occ="[^"]*" data-next="[^"]*">[^<]*<\/button>/,`<button class="ghost" data-status-occ="${x.codOcorrencia}" data-next="${next}">${txt}</button>`)}if(x.estimativaCartao)h=h.replace(/<button class="ghost" data-status-occ="[^"]*" data-next="[^"]*">[^<]*<\/button>/,'');return h};
 movements=async function(){
   const q=new URLSearchParams({mes:$('#movMonth').value,busca:$('#movSearch').value,situacao:$('#movStatus').value,tipo:movTipo,pagamento:$('#movPayment').value}),rows=await api('movimentacoes?'+q);
-  const ativos=rows.filter(x=>x.situacao!=='CANCELADA'),ent=ativos.filter(x=>x.tipo==='RECEITA').reduce((a,x)=>a+Number(x.valor),0),sai=ativos.filter(x=>x.tipo==='DESPESA').reduce((a,x)=>a+Number(x.valor),0),res=ent-sai;
-  $('#movTotais').innerHTML=`<article class="saldo-card"><small>Entradas</small><b class="positive">${brl(ent)}</b></article><article class="saldo-card"><small>Saídas</small><b>${brl(sai)}</b></article><article class="saldo-card"><small>Resultado do mês</small><b class="${res<0?'negative':''}">${brl(res)}</b></article>`;
-  $('#movRows').innerHTML=rows.map(x=>{const l=movLinha(x);return`<tr class="row-${x.tipo.toLowerCase()}${l.trav?' row-locked':''}"><td>${date(x.dataMovimentacao)}</td><td>${l.desc}</td><td class="${x.tipo==='RECEITA'?'positive':'negative-soft'}">${x.tipo==='RECEITA'?'+':'-'}${brl(x.valor)}</td><td>${l.sit}</td><td>${l.acoes}</td></tr>`}).join('')||'<tr><td colspan="5" class="vazio">Nada lançado neste mês.</td></tr>';
-  $('#movCards').innerHTML=rows.map(x=>{const l=movLinha(x);return`<article class="mobile-record row-${x.tipo.toLowerCase()}${l.trav?' row-locked':''}"><div class="mr-top"><span>${date(x.dataMovimentacao)}</span>${l.sit}</div><h3>${l.desc}</h3><b>${x.tipo==='RECEITA'?'+':'-'}${brl(x.valor)}</b>${l.acoes}</article>`}).join('')||'<p class="vazio">Nada lançado neste mês.</p>';
+  const ativos=rows.filter(x=>x.situacao!=='CANCELADA'),ent=ativos.filter(x=>x.tipo==='RECEITA').reduce((a,x)=>a+Number(x.valor),0),sai=ativos.filter(x=>x.tipo==='DESPESA').reduce((a,x)=>a+Number(x.estimativaCartao?x.valorRestante:x.valor),0),res=ent-sai,falta=ativos.filter(x=>x.tipo==='DESPESA'&&x.situacao==='PREVISTA'&&!x.estimativaCartao).reduce((a,x)=>a+Number(x.valor),0);
+  $('#movTotais').innerHTML=`<article class="saldo-card"><small>Entradas</small><b class="positive">${brl(ent)}</b></article><article class="saldo-card"><small>Saídas</small><b>${brl(sai)}</b><small>${falta>0?'falta '+brl(falta)+' a pagar':''}</small></article><article class="saldo-card"><small>Resultado do mês</small><b class="${res<0?'negative':''}">${brl(res)}</b></article>`;
+  $('#movRows').innerHTML=rows.map(x=>{const l=movLinha(x);return`<tr class="row-${x.tipo.toLowerCase()}${l.trav?' row-locked':''}"><td>${date(x.dataMovimentacao)}</td><td>${l.desc}</td><td class="${x.tipo==='RECEITA'?'positive':'negative-soft'}">${x.tipo==='RECEITA'?'+':'-'}${brl(x.estimativaCartao?x.valorRestante:x.valor)}${x.estimativaCartao?`<small>de ${brl(x.valor)} estimados</small>`:''}</td><td>${l.sit}</td><td>${l.acoes}</td></tr>`}).join('')||'<tr><td colspan="5" class="vazio">Nada lançado neste mês.</td></tr>';
+  $('#movCards').innerHTML=rows.map(x=>{const l=movLinha(x);return`<article class="mobile-record row-${x.tipo.toLowerCase()}${l.trav?' row-locked':''}"><div class="mr-top"><span>${date(x.dataMovimentacao)}</span>${l.sit}</div><h3>${l.desc}</h3><b>${x.tipo==='RECEITA'?'+':'-'}${brl(x.estimativaCartao?x.valorRestante:x.valor)}</b>${x.estimativaCartao?`<small>de ${brl(x.valor)} estimados</small>`:''}${l.acoes}</article>`}).join('')||'<p class="vazio">Nada lançado neste mês.</p>';
 };
 // filtros automáticos
 $('#movMonth').addEventListener('change',()=>movements());
@@ -176,3 +179,110 @@ $('#forecast').insertAdjacentHTML('afterend','<button id="forecastMais" class="g
 page(document.querySelector('.page.active').id);
 cards().then(()=>{sugerirFatura();vencimentoAuto()});
 load(document.querySelector('.page.active').id);
+
+// ---------- Gasto fixo no crédito: cartão + categoria em lista ----------
+(function(){
+  const f=$('#fixedCostForm');if(!f)return;
+  const pag=f.querySelector('[name=formaPagamento]');
+  pag.closest('label').insertAdjacentHTML('afterend','<label id="fixCartaoBox" class="hidden">Cartão da fatura<select name="codCartao"></select></label>');
+  const catIn=f.querySelector('[name=categoria]'),sel=document.createElement('select');sel.name='categoria';catIn.replaceWith(sel);
+  const BASE=['Transporte','Alimentação','Moradia','Saúde','Lazer','Pessoal','Educação','Assinaturas','Compras','Outros'];
+  let cats=[];
+  function pintaCats(atual){const l=[...new Set([...BASE,...cats,...(atual?[atual]:[])])];sel.innerHTML='<option value="">Sem categoria</option>'+l.map(c=>`<option>${esc(c)}</option>`).join('')+'<option value="__nova">+ Nova categoria...</option>';if(atual)sel.value=atual}
+  async function carrega(atual){try{const u=await api0('categorias');cats=u.filter(Boolean)}catch{}pintaCats(atual)}
+  sel.onchange=()=>{if(sel.value!=='__nova')return;const n=(prompt('Nome da nova categoria:')||'').trim();if(n){cats.push(n);pintaCats(n)}else sel.value=''};
+  function pintaCartoes(atual){const cs=(cartoesCache||[]).filter(c=>c.ativo),c=f.querySelector('[name=codCartao]');c.innerHTML=cs.map(k=>`<option value="${k.codCartao}">${esc(k.nomeCartao)}</option>`).join('')||'<option value="">Cadastre um cartão primeiro</option>';if(atual)c.value=atual}
+  function mostra(){$('#fixCartaoBox').classList.toggle('hidden',pag.value!=='CREDITO')}
+  pag.addEventListener('change',()=>{mostra();if(pag.value==='CREDITO')pintaCartoes()});
+  $('#fixedCostsAction').addEventListener('click',async()=>{if(!cartoesCache.length){try{cartoesCache=await api0('cartoes')}catch{}}await carrega();pintaCartoes();mostra()});
+  document.addEventListener('click',async e=>{const ed=e.target.closest('[data-edit-fixed]');if(!ed)return;const x=JSON.parse(ed.dataset.editFixed);await carrega(x.categoria||'');pintaCartoes(x.codCartao);mostra()});
+  f.addEventListener('reset',()=>setTimeout(()=>{pintaCats('');mostra()}));
+})();
+
+// ---------- Fatura fechada: aviso fica até marcar como paga ----------
+function textoFatura(x){
+  const venc=date(x.vencimento),base=x.oficial?`Fatura ${esc(x.nomeCartao)} fechou: ${brl(x.valor)} (vence ${venc}).`:`Fatura ${esc(x.nomeCartao)} fechou, estimada em ${brl(x.valor)} (ainda sem o total do banco, vence ${venc}).`;
+  const soma=x.somaAnteriores?` Somando as faturas que vencem antes, são ${brl(x.acumulado)}.`:'';
+  return base+soma+(x.temSaldo?' Você já tem o valor na conta para pagar.':` Faltam ${brl(x.faltam)} na conta para pagar.`);
+}
+const renderLembretes1=renderLembretes;
+renderLembretes=function(l){
+  const f=l.fechadas||[],chaves=new Set(f.map(x=>`${x.codCartao}|${x.competencia}`));
+  renderLembretes1({...l,faturas:(l.faturas||[]).filter(x=>!chaves.has(`${x.codCartao}|${x.competencia}`))});
+  $('#lembretes').insertAdjacentHTML('afterbegin',f.map(x=>`<div class="reminder"><span>${textoFatura(x)}</span>${x.oficial?'':`<button class="ghost" data-fatura-card="${x.codCartao}" data-comp="${x.competencia}" data-venc="${x.vencimento}">Informar total</button>`}<button class="ghost" data-fatura-paga="${x.codFatura}" data-valor="${x.valor}">Marcar como paga</button></div>`).join(''));
+};
+document.addEventListener('click',async e=>{
+  const b=e.target.closest('[data-fatura-paga]'),d=e.target.closest('[data-fatura-desfaz]');
+  if(b){if(!confirm(`Marcar esta fatura como paga? Isso desconta ${brl(b.dataset.valor)} do seu saldo hoje.`))return;try{await api('faturas/'+b.dataset.faturaPaga+'/paga',{method:'PATCH',body:JSON.stringify({paga:true})});toast('Fatura marcada como paga.','positive');await dashboard();await faturas()}catch(x){toast(x.message,'negative')}}
+  if(d){if(!confirm('Desfazer o pagamento? O valor volta para o seu saldo.'))return;try{await api('faturas/'+d.dataset.faturaDesfaz+'/paga',{method:'PATCH',body:JSON.stringify({paga:false})});toast('Pagamento desfeito.','positive');await dashboard();await faturas()}catch(x){toast(x.message,'negative')}}
+});
+const faturas1=faturas;
+faturas=async function(){await faturas1();try{const rows=await api0('faturas'),els=[...document.querySelectorAll('#faturaList .fat-row')];rows.forEach((x,i)=>{const el=els[i];if(!el)return;const tot=Number(x.valorInformado)?Number(x.valorTotal):Number(x.comprasConhecidas);el.insertAdjacentHTML('beforeend',Number(x.paga)?`<span class="fat-paga"><small>Paga</small> <button class="ghost" data-fatura-desfaz="${x.codFatura}">Desfazer</button></span>`:tot>0?`<button class="ghost" data-fatura-paga="${x.codFatura}" data-valor="${tot}">Marcar como paga</button>`:'')})}catch{}};
+
+// ---------- Configurações financeiras em 3 blocos + "Conferir com o banco" ----------
+(function(){
+  const f=$('#configForm'),sum=$('.settings-summary'),sec=$('#configuracoes');if(!f||!sum)return;
+  const L=n=>f.querySelector(`[name=${n}]`).closest('label');
+  const mk=(id,titulo,dica,nomes,aberto)=>{
+    const d=document.createElement('details');d.className='panel cfg-bloco';d.id=id;d.dataset.aba='geral';if(aberto)d.open=true;
+    d.innerHTML=`<summary><b>${titulo}</b><small>${dica}</small></summary><form class="form-grid"></form>`;
+    const form=d.querySelector('form');nomes.forEach(n=>form.appendChild(L(n)));form.insertAdjacentHTML('beforeend','<button class="primary">Salvar</button>');
+    form.onsubmit=async e=>{e.preventDefault();const c=await api('configuracoes');await api('configuracoes',{method:'PUT',body:JSON.stringify({...c,dataSaldoInicial:String(c.dataSaldoInicial||'').slice(0,10),...formData(form)})});await config();await dashboard();toast('Salvo.','positive')};
+    return d};
+  const b1=mk('blocoSaldos','Saldos de partida','De onde o PRUMO começou a contar. Mexa só se algo estiver errado.',['saldoInicial','poupancaInicial','dataSaldoInicial','saldoInicialUSD','cotacaoInicialUSD','saldoInicialEUR','cotacaoInicialEUR'],false),
+        b2=mk('blocoMargem','Margem e metas','Quanto você quer manter de folga e de reserva.',['limiteSeguranca','reservaEmergencia'],true),
+        b3=mk('blocoAlertas','Alertas de cotação','Avisa quando o dólar ou o euro chegar no valor ideal.',['alertaUSDAtivo','alertaUSDValor','alertaEURAtivo','alertaEURValor'],true);
+  sum.after(b2,b3,b1);
+  sum.querySelector('.hint').textContent='Margem, reserva e alertas ficam abertos. Os saldos de partida ficam recolhidos.';
+  sum.querySelector('.settings-buttons').innerHTML='<button class="ghost" type="button" data-settings-target="reconcilePanel">Conferir com o banco</button>';
+  sum.querySelector('.settings-buttons button').onclick=()=>$('#reconcilePanel').classList.toggle('hidden');
+  const t=$('#reconcilePanel h3');if(t)t.textContent='Conferir com o banco';
+  ['#initialConfigPanel','#limitsPanel'].forEach(s=>{const x=$(s);if(x)x.remove()});
+  // reconciliação vem logo depois do resumo
+  sum.after($('#reconcilePanel'));
+  config=async function(){const c=await api('configuracoes'),q=n=>document.querySelector(`#configuracoes [name=${n}]`);
+    for(const[k,v]of Object.entries(c)){const el=q(k);if(!el)continue;
+      if(['saldoInicial','poupancaInicial','limiteSeguranca','reservaEmergencia'].includes(k))el.value=brl(v);
+      else if(k==='saldoInicialUSD'||k==='saldoInicialEUR')el.value=Number(v).toLocaleString('pt-BR',{style:'currency',currency:k.endsWith('USD')?'USD':'EUR'});
+      else el.value=String(v??'').slice(0,10)}
+    bind(sec)};
+  f.remove();
+  config();
+})();
+
+// ---------- Bens: editar custo adicional ----------
+document.addEventListener('click',e=>{const b=e.target.closest('[data-edit-cost]');if(!b)return;
+  const c=JSON.parse(b.dataset.editCost),box=b.closest('[id^=asset-extra-]'),cr=c.formaPagamento==='CREDITO',tipos=['MANUTENCAO','REPARO','SEGURO','DOCUMENTACAO','LICENCIAMENTO','IMPOSTO','OUTRO'];
+  box.innerHTML=`<form class="cost-edit-form form-grid" data-cod="${c.codCusto}"><h4>Editar custo</h4>${cr?'<p class="hint">Custo no crédito: a compra já está na fatura. Só tipo e descrição podem mudar aqui; para data ou valor, exclua e lance de novo.</p>':''}<label>Data<input name="dataCusto" type="date" value="${String(c.dataCusto).slice(0,10)}" ${cr?'readonly':''}></label><label>Tipo<select name="tipo">${tipos.map(t=>`<option ${t===c.tipo?'selected':''}>${t}</option>`).join('')}</select></label><label>Descrição<input name="descricao" value="${esc(c.descricao||'')}"></label><label>Valor<input name="valor" class="money-input" value="${brl(c.valor)}" ${cr?'readonly':''}></label><label>Situação<select name="situacao" ${cr?'disabled':''}><option ${c.situacao==='PAGO'?'selected':''}>PAGO</option><option ${c.situacao==='PREVISTO'?'selected':''}>PREVISTO</option></select></label><button class="primary">Salvar</button><button class="ghost" type="button" data-cancel-edit-cost>Cancelar</button></form>`;
+  box.classList.remove('hidden');bind(box);if(cr)box.querySelector('[name=situacao]').insertAdjacentHTML('afterend','<input type="hidden" name="situacao" value="PAGO">');
+});
+document.addEventListener('click',async e=>{if(e.target.closest('[data-cancel-edit-cost]')){await bens()}});
+document.addEventListener('submit',async e=>{if(!e.target.matches('.cost-edit-form'))return;e.preventDefault();e.stopImmediatePropagation();
+  try{await api('bens/custos/'+e.target.dataset.cod,{method:'PUT',body:JSON.stringify(formData(e.target))});toast('Custo atualizado em Bens e Movimentações.','positive');await bens();await dashboard()}catch(x){toast(x.message,'negative')}},true);
+
+// ---------- Receitas fixas (mesmo estilo dos gastos fixos) ----------
+(function(){
+  $('#fixedCostsAction').insertAdjacentHTML('afterend','<button id="fixedIncomeAction" class="ghost hidden" type="button">Receitas fixas</button>');
+  $('#fixedCostsPanel').insertAdjacentHTML('afterend',`<div id="fixedIncomePanel" class="panel hidden"><div class="panel-head"><h3>Receitas fixas</h3><button id="closeFixedIncome" class="ghost" type="button">Fechar</button></div><p class="hint">Salário e outras entradas que se repetem todo mês. Aparecem como previstas em Movimentações; você confirma quando cair.</p><form id="fixedIncomeForm" class="form-grid"><input type="hidden" name="codFin"><label>Descrição<input name="descricao" required placeholder="Salário"></label><label>Valor mensal<input name="valor" class="money-input" placeholder="R$ 0,00" inputmode="numeric" value="" required></label><label>Categoria<select name="categoria"></select></label><label>Dia previsto<input name="dia" type="number" min="1" max="31" value="5"></label><label>Recebimento<select name="formaPagamento"><option value="PIX">Pix</option><option value="TRANSFERENCIA">Transferência</option><option value="DINHEIRO">Dinheiro</option></select></label><label>Início<input name="inicio" type="month" required></label><label>Término, opcional<input name="fim" type="month"></label><button class="primary">Salvar receita fixa</button></form><div id="fixedIncomeList" class="responsive-list"></div></div>`);
+  const f=$('#fixedIncomeForm'),sel=f.querySelector('[name=categoria]'),BASE=['Salário','Freelance','Aluguel recebido','Benefícios','Reembolso','Outros'];
+  let cats=[];
+  const pinta=a=>{const l=[...new Set([...BASE,...cats,...(a?[a]:[])])];sel.innerHTML='<option value="">Sem categoria</option>'+l.map(c=>`<option>${esc(c)}</option>`).join('')+'<option value="__nova">+ Nova categoria...</option>';if(a)sel.value=a};
+  const carrega=async a=>{try{cats=(await api0('categorias')).filter(Boolean)}catch{}pinta(a)};
+  sel.onchange=()=>{if(sel.value!=='__nova')return;const n=(prompt('Nome da nova categoria:')||'').trim();if(n){cats.push(n);pinta(n)}else sel.value=''};
+  mesLista(f.querySelector('[name=inicio]'),{padrao:mesAtual(),antes:12});
+  mesLista(f.querySelector('[name=fim]'),{vazio:'Sem término',antes:0,depois:60});
+  bind(f);
+  async function lista(){const rows=await api('receitas-fixas');$('#fixedIncomeList').innerHTML=rows.map(x=>`<article class="list-card"><div><b>${esc(x.descricao)}</b><small>${brl(x.valor)} por mês · dia ${Number(String(x.dataInicioRecorrencia).slice(8,10))} · ${esc(x.categoria||'Sem categoria')} · Início ${fullMonth(x.dataInicioRecorrencia)}${x.dataFimRecorrencia?' · até '+fullMonth(x.dataFimRecorrencia):''}</small></div><div class="record-actions"><button class="ghost" data-edit-income='${JSON.stringify(x).replace(/'/g,'&#39;')}'>Editar</button><button class="danger-outline" data-delete-income="${x.codFin}">Excluir</button></div></article>`).join('')||'<p>Nenhuma receita fixa cadastrada.</p>'}
+  $('#fixedIncomeAction').onclick=async()=>{$('#fixedIncomePanel').classList.remove('hidden');await carrega();await lista();$('#fixedIncomePanel').scrollIntoView({behavior:'smooth'})};
+  $('#closeFixedIncome').onclick=()=>$('#fixedIncomePanel').classList.add('hidden');
+  f.onsubmit=async e=>{e.preventDefault();const d=formData(f),editing=f.dataset.editing&&d.codFin;try{await api(editing?'receitas-fixas/'+d.codFin:'receitas-fixas',{method:editing?'PUT':'POST',body:JSON.stringify(d)});resetForm(f,{inicio:mesAtual(),dia:'5'});pinta('');await lista();await movements();await dashboard();toast('Receita fixa salva.','positive')}catch(x){toast(x.message,'negative')}};
+  document.addEventListener('click',async e=>{const ed=e.target.closest('[data-edit-income]'),del=e.target.closest('[data-delete-income]');
+    if(ed){const x=JSON.parse(ed.dataset.editIncome);resetForm(f);await carrega(x.categoria||'');f.codFin.value=x.codFin;f.descricao.value=x.descricao;f.valor.value=brl(x.valor);f.formaPagamento.value=x.formaPagamento||'PIX';f.inicio.value=String(x.dataInicioRecorrencia).slice(0,7);f.fim.value=x.dataFimRecorrencia?String(x.dataFimRecorrencia).slice(0,7):'';f.dia.value=Number(String(x.dataInicioRecorrencia).slice(8,10));f.dataset.editing='1';f.inicio.dispatchEvent(new Event('change'));f.fim.dispatchEvent(new Event('change'));$('#fixedIncomePanel').scrollIntoView({behavior:'smooth'})}
+    if(del){if(!confirm('Excluir esta receita fixa e as previsões futuras?'))return;try{await api('receitas-fixas/'+del.dataset.deleteIncome,{method:'DELETE'});await lista();await movements();await dashboard()}catch(x){toast(x.message,'negative')}}});
+  const page2=page;page=function(id){page2(id);$('#fixedIncomeAction').classList.toggle('hidden',id!=='movimentacoes')};
+})();
+
+// Compra no crédito na lista: mostra a parcela do mês; Editar/Excluir atuam na compra inteira.
+(function(){const base=movActions;movActions=function(x){if(x.classeRegistro!=='PARCELA_CREDITO')return base(x);
+  const compra={...x,valor:x.valorCompra,dataMovimentacao:String(x.dataCompra).slice(0,10),classeRegistro:'MOVIMENTACAO'};
+  return base(compra).replace(/<button class="ghost" data-status-mov="[^"]*" data-next="[^"]*">[^<]*<\/button>/,'').replace('>Excluir<','>Excluir compra<')}})();

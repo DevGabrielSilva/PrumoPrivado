@@ -115,3 +115,63 @@ test('Movimentações de novembro traz a linha "Outros (fatura nu)" travada', as
     assert.strictEqual(f.json.dados.length, 1);
   } finally { pool.query = orig; }
 });
+
+test('recorrência: dezembro mostra data, valor e situação da ocorrência (não do modelo de novembro)', async () => {
+  const orig = pool.query;
+  pool.query = async (sql) => {
+    const s = String(sql);
+    if (s.includes('FROM tbOcorrenciasRecorrentes o JOIN tbFinancas m')) return [
+      { codFin: 5, dataMovimentacao: '2026-11-10', tipo: 'DESPESA', descricao: 'Internet', valor: 100, situacao: 'PREVISTA', categoria: 'Moradia', formaPagamento: 'PIX', codOcorrencia: 7, dataPrevista: '2026-12-10', valorOcorrencia: 120, situacaoOcorrencia: 'EFETIVADA' },
+      { codFin: 6, dataMovimentacao: '2026-11-05', tipo: 'DESPESA', descricao: 'Gás', valor: 80, situacao: 'PREVISTA', categoria: 'Moradia', formaPagamento: 'PIX', codOcorrencia: 8, dataPrevista: '2026-12-05', valorOcorrencia: 80, situacaoOcorrencia: 'PREVISTA' },
+    ];
+    if (s.includes('FROM tbFinancas f')) return [];
+    if (s.includes('INSERT IGNORE') || s.includes('SELECT * FROM tbFinancas WHERE recorrente=1')) return [];
+    return [];
+  };
+  try {
+    const r = await chamar(app, 'GET', '/api/app/movimentacoes?mes=2026-12');
+    const d = r.json.dados;
+    assert.strictEqual(d.length, 2);
+    assert.deepStrictEqual(d.map((x) => String(x.dataMovimentacao)), ['2026-12-10', '2026-12-05']);
+    assert.strictEqual(Number(d[0].valor), 120); assert.strictEqual(d[0].situacao, 'EFETIVADA'); assert.strictEqual(d[0].classeRegistro, 'OCORRENCIA');
+    assert.strictEqual(Number(d[1].valor), 80); assert.strictEqual(d[1].situacao, 'PREVISTA');
+    const f = await chamar(app, 'GET', '/api/app/movimentacoes?mes=2026-12&situacao=EFETIVADA');
+    assert.deepStrictEqual(f.json.dados.map((x) => x.descricao), ['Internet']);
+  } finally { pool.query = orig; }
+});
+
+test('Efetivar recorrência: grava a ocorrência, a lista mostra Efetivada e desfazer volta para Prevista', async () => {
+  const estado = { occ: { codOcorrencia: 7, codFinModelo: 5, competencia: '2026-12', dataPrevista: '2026-12-10', valor: 120, situacao: 'PREVISTA', codFinEfetivada: null }, financas: [] };
+  const modelo = { codFin: 5, dataMovimentacao: '2026-11-10', tipo: 'DESPESA', descricao: 'Internet', valor: 100, situacao: 'PREVISTA', categoria: 'Moradia', formaPagamento: 'PIX', recorrente: 1, origem: 'MANUAL' };
+  const origQ = pool.query, origC = pool.getConnection;
+  pool.query = async (sql) => {
+    const s = String(sql);
+    if (s.includes('FROM tbOcorrenciasRecorrentes o JOIN tbFinancas m')) return [{ ...modelo, codOcorrencia: 7, dataPrevista: estado.occ.dataPrevista, valorOcorrencia: estado.occ.valor, situacaoOcorrencia: estado.occ.situacao }];
+    if (s.includes('FROM tbFinancas f')) return estado.financas.filter((x) => x.origem !== 'RECORRENCIA_EFETIVADA');
+    return [];
+  };
+  pool.getConnection = async () => ({
+    async beginTransaction() {}, async commit() {}, async rollback() {}, release() {},
+    async query(sql, p = []) {
+      const s = String(sql).replace(/\s+/g, ' ');
+      if (s.startsWith('SELECT o.*,m.tipo')) return [{ ...estado.occ, tipo: 'DESPESA', descricao: 'Internet', categoria: 'Moradia', formaPagamento: 'PIX' }];
+      if (s.startsWith('INSERT INTO tbFinancas')) { estado.financas.push({ codFin: 99, origem: 'RECORRENCIA_EFETIVADA', dataMovimentacao: p[0], valor: p[3], situacao: 'EFETIVADA' }); return { insertId: 99 }; }
+      if (s.startsWith("UPDATE tbOcorrenciasRecorrentes SET situacao='EFETIVADA'")) { estado.occ.situacao = 'EFETIVADA'; estado.occ.codFinEfetivada = p[1]; return {}; }
+      if (s.startsWith('DELETE FROM tbFinancas')) { estado.financas = estado.financas.filter((x) => x.codFin !== p[0]); return {}; }
+      if (s.startsWith('UPDATE tbOcorrenciasRecorrentes SET situacao=?')) { estado.occ.situacao = p[0]; estado.occ.codFinEfetivada = null; return {}; }
+      return {};
+    },
+  });
+  const patch = (st) => chamar(app, 'PATCH', '/api/app/ocorrencias/7/situacao', { situacao: st });
+  const lista = async () => (await chamar(app, 'GET', '/api/app/movimentacoes?mes=2026-12')).json.dados;
+  try {
+    assert.strictEqual((await lista())[0].situacao, 'PREVISTA');
+    assert.strictEqual((await patch('EFETIVADA')).status, 200);
+    const l = await lista();
+    assert.strictEqual(l.length, 1, 'o lançamento criado ao efetivar não aparece duplicado');
+    assert.strictEqual(l[0].situacao, 'EFETIVADA'); assert.strictEqual(Number(l[0].valor), 120);
+    assert.strictEqual(estado.financas[0].dataMovimentacao, '2026-12-10'); assert.strictEqual(Number(estado.financas[0].valor), 120);
+    assert.strictEqual((await patch('PREVISTA')).status, 200);
+    assert.strictEqual((await lista())[0].situacao, 'PREVISTA'); assert.strictEqual(estado.financas.length, 0);
+  } finally { pool.query = origQ; pool.getConnection = origC; }
+});

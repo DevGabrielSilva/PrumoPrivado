@@ -23,4 +23,28 @@ function lembretesFatura(cards,hoje,jaInformada,{janelaFechada=7,avisoAntes=2}={
   return out;
 }
 
-module.exports={fechamentos,vencimentoDe,lembretesFatura};
+
+// Alerta "fatura fechou": fica até a fatura ser marcada como paga (mesmo com o total informado).
+// Compara o saldo da conta (sem poupança) com a soma das faturas abertas que vencem até esta, na ordem de vencimento.
+// faturas: [{codFatura,codCartao,competencia,dataVencimento,valorTotal,valorInformado,conhecido}] (só não pagas).
+function alertasFaturaFechada(cards,hoje,faturas,saldo){
+  const cent=v=>Math.round(Number(v||0)*100),out=[];
+  for(const c of cards){
+    if(!c.ativo)continue;
+    const{ultimo}=fechamentos(c,hoje),compUlt=iso(vencimentoDe(c,ultimo)).slice(0,7);
+    for(const f of faturas){
+      if(String(f.codCartao)!==String(c.codCartao))continue;
+      const comp=f.competencia||String(f.dataVencimento).slice(0,7);
+      if(comp>compUlt)continue; // ainda não fechou
+      const oficial=!!Number(f.valorInformado),valor=cent(oficial?f.valorTotal:f.conhecido);
+      if(valor<=0)continue;
+      out.push({tipo:'FATURA_FECHADA',codFatura:f.codFatura,codCartao:c.codCartao,nomeCartao:c.nomeCartao,competencia:comp,vencimento:String(f.dataVencimento).slice(0,10),valor:valor/100,oficial,_v:valor});
+    }
+  }
+  out.sort((a,b)=>a.vencimento.localeCompare(b.vencimento)||a.codFatura-b.codFatura);
+  let acum=0;const sal=cent(saldo);
+  for(const a of out){acum+=a._v;const falta=Math.max(0,acum-sal);a.acumulado=acum/100;a.faltam=falta/100;a.temSaldo=falta===0;a.somaAnteriores=(acum-a._v)>0;delete a._v}
+  return out;
+}
+
+module.exports={fechamentos,vencimentoDe,lembretesFatura,alertasFaturaFechada};

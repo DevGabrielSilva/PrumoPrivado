@@ -120,3 +120,4 @@ td small,.mobile-record h3 small{display:block;color:var(--muted);font-weight:40
 .form-grid>label{align-content:start}
 .mes-nav{min-width:0}
 @media(max-width:720px){.top{flex-wrap:wrap;gap:8px}.header-actions{display:flex;flex-wrap:wrap;gap:8px;width:100%}.header-actions .primary{flex:1}}
+.cfg-bloco summary{cursor:pointer;display:flex;flex-direction:column;gap:2px;list-style:none}.cfg-bloco summary::-webkit-details-marker{display:none}.cfg-bloco summary small{color:var(--muted,#667);font-weight:400}.cfg-bloco[open] summary{margin-bottom:12px}.cfg-bloco summary b::after{content:" ▸";color:var(--muted,#667)}.cfg-bloco[open] summary b::after{content:" ▾"}

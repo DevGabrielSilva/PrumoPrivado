@@ -27,7 +27,7 @@ async function restaurar(c,b){
   return{tabelas:usar.length,linhas:usar.reduce((a,t)=>a+b.tabelas[t].length,0)};
 }
 
-const stamp=d=>d.toISOString().slice(0,10);
+const stamp=d=>new Intl.DateTimeFormat('en-CA',{timeZone:process.env.PRUMO_TZ||'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(d);
 function salvarArquivo(dir,backup,prefixo='prumo-backup',agora=new Date()){fs.mkdirSync(dir,{recursive:true});const f=path.join(dir,`${prefixo}-${stamp(agora)}${prefixo==='prumo-backup'?'':'-'+agora.toISOString().slice(11,19).replace(/:/g,'')}.json`);fs.writeFileSync(f,JSON.stringify(backup),{mode:0o600});return f}
 function limparAntigos(dir,manter=14){const l=fs.readdirSync(dir).filter(f=>/^prumo-backup-\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort();for(const f of l.slice(0,Math.max(0,l.length-manter)))fs.unlinkSync(path.join(dir,f));return l.length}
 

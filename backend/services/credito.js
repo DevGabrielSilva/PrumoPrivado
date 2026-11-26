@@ -42,9 +42,37 @@ function mesProvavelFatura(dataCompra,diaFechamento){
   return `${ano}-${String(mes).padStart(2,'0')}`;
 }
 
-async function createCredit(c,b){const n=Math.max(1,Number(b.quantidadeParcelas||1)),total=Math.round(money(b.valorTotal)*100),base=Math.floor(total/n),rest=total-base*n,card=(await c.query('SELECT diaVencimento FROM tbCartoes WHERE codCartao=?',[b.codCartao]))[0];if(!card)throw Error('Cartão inválido');b.dataPrimeiraParcela=dataPrimeiraParcela(b.dataPrimeiraParcela,card.diaVencimento);if(!b.dataPrimeiraParcela)throw Error('Informe o mês da primeira fatura');const cp=await c.query(`INSERT INTO tbComprasCartao(codCartao,dataCompra,descricao,categoria,valorTotal,quantidadeParcelas,valorParcela,dataPrimeiraParcela) VALUES(?,?,?,?,?,?,?,?)`,[b.codCartao,b.dataCompra,b.descricao,b.categoria||null,total/100,n,base/100,b.dataPrimeiraParcela]);const tocadas=new Set();for(let i=0;i<n;i++){const d=new Date(b.dataPrimeiraParcela+'T12:00:00');d.setMonth(d.getMonth()+i);const ds=d.toISOString().slice(0,10),comp=ds.slice(0,7),par=await c.query('INSERT INTO tbParcelasCartao(codCompra,numeroParcela,valor,dataParcela) VALUES(?,?,?,?)',[cp.insertId,i+1,(base+(i===n-1?rest:0))/100,ds]);let f=(await c.query('SELECT codFatura FROM tbFaturas WHERE codCartao=? AND competencia=?',[b.codCartao,comp]))[0];if(!f){const fr=await c.query(`INSERT INTO tbFaturas(codCartao,dataFechamento,dataVencimento,valorTotal,paga,competencia,valorInformado) VALUES(?,?,?,?,0,?,0)`,[b.codCartao,ds,ds,0,comp]);f={codFatura:fr.insertId}}await c.query('INSERT IGNORE INTO tbFaturaParcelas(codFatura,codParcela) VALUES(?,?)',[f.codFatura,par.insertId]);tocadas.add(f.codFatura)}
+async function createCredit(c,b){const n=Math.max(1,Number(b.quantidadeParcelas||1)),total=Math.round(money(b.valorTotal)*100),base=Math.floor(total/n),rest=total-base*n,card=(await c.query('SELECT diaVencimento FROM tbCartoes WHERE codCartao=?',[b.codCartao]))[0];if(!card)throw Error('Cartão inválido');b.dataPrimeiraParcela=dataPrimeiraParcela(b.dataPrimeiraParcela,card.diaVencimento);if(!b.dataPrimeiraParcela)throw Error('Informe o mês da primeira fatura');const cp=await c.query(`INSERT INTO tbComprasCartao(codCartao,dataCompra,descricao,categoria,valorTotal,quantidadeParcelas,valorParcela,dataPrimeiraParcela,codFin) VALUES(?,?,?,?,?,?,?,?,?)`,[b.codCartao,b.dataCompra,b.descricao,b.categoria||null,total/100,n,base/100,b.dataPrimeiraParcela,b.codFin||null]);const tocadas=new Set();for(let i=0;i<n;i++){const d=new Date(b.dataPrimeiraParcela+'T12:00:00');d.setMonth(d.getMonth()+i);const ds=d.toISOString().slice(0,10),comp=ds.slice(0,7),par=await c.query('INSERT INTO tbParcelasCartao(codCompra,numeroParcela,valor,dataParcela) VALUES(?,?,?,?)',[cp.insertId,i+1,(base+(i===n-1?rest:0))/100,ds]);let f=(await c.query('SELECT codFatura FROM tbFaturas WHERE codCartao=? AND competencia=?',[b.codCartao,comp]))[0];if(!f){const fr=await c.query(`INSERT INTO tbFaturas(codCartao,dataFechamento,dataVencimento,valorTotal,paga,competencia,valorInformado) VALUES(?,?,?,?,0,?,0)`,[b.codCartao,ds,ds,0,comp]);f={codFatura:fr.insertId}}await c.query('INSERT IGNORE INTO tbFaturaParcelas(codFatura,codParcela) VALUES(?,?)',[f.codFatura,par.insertId]);tocadas.add(f.codFatura)}
   // Se a fatura já tinha o total informado, o "Outros" é recalculado com a nova compra.
   for(const id of tocadas)await syncOutros(c,id);
   return Number(cp.insertId)}
 
-module.exports={createCredit,syncOutros,calcularOutros,dataPrimeiraParcela,mesProvavelFatura};
+// Remove a compra (e parcelas) ligada a uma movimentação/custo e devolve as faturas afetadas.
+async function removerComprasDoFin(c,codFin){
+  const faturas=new Set();
+  for(const x of await c.query('SELECT codCompra FROM tbComprasCartao WHERE codFin=?',[codFin])){
+    for(const f of await c.query('SELECT DISTINCT fp.codFatura FROM tbFaturaParcelas fp JOIN tbParcelasCartao p ON p.codParcela=fp.codParcela WHERE p.codCompra=?',[x.codCompra]))faturas.add(f.codFatura);
+    await c.query('DELETE FROM tbFaturaParcelas WHERE codParcela IN (SELECT codParcela FROM tbParcelasCartao WHERE codCompra=?)',[x.codCompra]);
+    await c.query('DELETE FROM tbParcelasCartao WHERE codCompra=?',[x.codCompra]);
+    await c.query('DELETE FROM tbComprasCartao WHERE codCompra=?',[x.codCompra]);
+  }
+  return faturas;
+}
+// Excluir: a compra sai da fatura. Se a fatura tem total oficial, a diferença volta como "Outros" (total oficial - anotado).
+// Sem total oficial, só reduz o anotado/previsto.
+async function excluirCompraCredito(c,codFin){
+  const faturas=await removerComprasDoFin(c,codFin);
+  for(const id of faturas)await syncOutros(c,id);
+  return faturas.size;
+}
+// Editar: refaz a compra e as parcelas com os dados atuais da movimentação (valor, data, descrição, cartão, parcelas, 1ª fatura).
+async function refazerCompraCredito(c,codFin,categoria){
+  const f=(await c.query('SELECT codFin,dataMovimentacao,descricao,valor,categoria,formaPagamento,codCartao,quantidadeParcelas,primeiraFatura FROM tbFinancas WHERE codFin=?',[codFin]))[0];
+  if(!f||f.formaPagamento!=='CREDITO')return false;
+  const antigas=await removerComprasDoFin(c,codFin);
+  await createCredit(c,{codCartao:f.codCartao,quantidadeParcelas:f.quantidadeParcelas||1,valorTotal:f.valor,dataCompra:String(f.dataMovimentacao).slice(0,10),descricao:f.descricao,categoria:categoria||f.categoria,dataPrimeiraParcela:f.primeiraFatura||String(f.dataMovimentacao).slice(0,10),codFin:f.codFin});
+  for(const id of antigas)await syncOutros(c,id);
+  return true;
+}
+
+module.exports={removerComprasDoFin,excluirCompraCredito,refazerCompraCredito,createCredit,syncOutros,calcularOutros,dataPrimeiraParcela,mesProvavelFatura};
