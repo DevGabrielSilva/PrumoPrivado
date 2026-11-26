@@ -87,6 +87,21 @@ test('Movimentações: com fatura oficial a estimativa mostra restante 0', async
   } finally { pool.query = orig; }
 });
 
+test('Resumo do mês: estimativas já pagas junto com a fatura (sem total) continuam contando na saída', async () => {
+  const orig = pool.query, base = bancoRotas({ faturaOficial: false });
+  try {
+    pool.query = async (sql, p) => {
+      const s = String(sql).replace(/\s+/g, ' ');
+      if (s.includes("o.situacao='EFETIVADA'") && s.includes('o.codFinEfetivada IS NULL')) return [{ categoria: 'Transporte', v: 270 }];
+      if (s.includes("o.situacao='PREVISTA'") && s.includes('m.formaPagamento=\'CREDITO\'')) return [];
+      return base(sql, p);
+    };
+    const r = (await chamar('GET', '/api/app/resumo-mes?mes=2026-12')).json.dados;
+    assert.strictEqual(r.estimativasCartao, 270);
+    assert.strictEqual(r.saidaTotal, 270 + r.despesas + r.totalFaturas);
+  } finally { pool.query = orig; }
+});
+
 test('Resumo do mês: estimativa soma só o restante, uma vez, e some com fatura oficial', async () => {
   const orig = pool.query;
   try {
@@ -260,7 +275,7 @@ test('Marcar fatura como paga: desconta do saldo uma vez, some o aviso; desfazer
     async beginTransaction() {}, async commit() {}, async rollback() {}, release() {},
     async query(sql, p = []) {
       const s = String(sql).replace(/\s+/g, ' ');
-      if (s.startsWith('SELECT f.codFatura,f.paga')) return [{ codFatura: 1, paga: estado.paga, valorTotal: 1250, valorInformado: 1, nomeCartao: 'Santander', competencia: '2026-11', conhecido: 400 }];
+      if (s.startsWith('SELECT f.codFatura,f.codCartao,f.paga')) return [{ codFatura: 1, paga: estado.paga, valorTotal: 1250, valorInformado: 1, nomeCartao: 'Santander', competencia: '2026-11', conhecido: 400 }];
       if (s.startsWith('DELETE FROM tbFinancas WHERE chaveOrigem')) { estado.financas = estado.financas.filter((x) => x.chave !== p[0]); return {}; }
       if (s.startsWith('INSERT INTO tbFinancas')) { estado.financas.push({ valor: p[1], chave: p[2], origem: 'PAGAMENTO_FATURA' }); return {}; }
       if (s.startsWith('UPDATE tbFaturas SET paga')) { estado.paga = p[0]; return {}; }
@@ -273,6 +288,34 @@ test('Marcar fatura como paga: desconta do saldo uma vez, some o aviso; desfazer
     assert.strictEqual(estado.financas[0].valor, 1250);
     assert.strictEqual((await chamar('PATCH', '/api/app/faturas/1/paga', { paga: false })).status, 200);
     assert.strictEqual(estado.paga, 0); assert.strictEqual(estado.financas.length, 0);
+  } finally { pool.getConnection = orig; }
+});
+
+test('Marcar fatura como paga SEM total/PDF: estimativas do cartão viram efetivadas e entram no valor; desfazer volta; repetir não duplica', async () => {
+  const estado = { paga: 0, financas: [], ocorr: { 1: 'PREVISTA', 2: 'PREVISTA' } };
+  const orig = pool.getConnection;
+  pool.getConnection = async () => ({
+    async beginTransaction() {}, async commit() {}, async rollback() {}, release() {},
+    async query(sql, p = []) {
+      const s = String(sql).replace(/\s+/g, ' ');
+      if (s.startsWith('SELECT f.codFatura,f.codCartao,f.paga')) return [{ codFatura: 1, codCartao: 1, paga: estado.paga, valorTotal: 0, valorInformado: 0, nomeCartao: 'Santander', competencia: '2026-11', conhecido: 100 }];
+      if (s.includes('FROM tbOcorrenciasRecorrentes o JOIN tbFinancas m')) return Object.entries(estado.ocorr).filter(([, v]) => v === 'PREVISTA').map(([id]) => ({ codOcorrencia: Number(id), valor: Number(id) === 1 ? 120 : 150, dataPrevista: '2026-11-10', descricao: 'gasolina', categoria: 'Transporte', codCartao: 1 }));
+      if (s.startsWith('SELECT x.codCartao') || s.startsWith('SELECT f.codCartao,f.valorInformado')) return [];
+      if (s.startsWith('SELECT codCartao,nomeCartao')) return [{ codCartao: 1, nomeCartao: 'Santander', diaVencimento: 10 }];
+      if (s.startsWith("UPDATE tbOcorrenciasRecorrentes SET situacao='EFETIVADA'")) { p.forEach((id) => { estado.ocorr[id] = 'EFETIVADA'; }); return {}; }
+      if (s.startsWith("UPDATE tbOcorrenciasRecorrentes SET situacao='PREVISTA'")) { for (const k of Object.keys(estado.ocorr)) estado.ocorr[k] = 'PREVISTA'; return {}; }
+      if (s.startsWith('DELETE FROM tbFinancas WHERE chaveOrigem')) { estado.financas = estado.financas.filter((x) => x.chave !== p[0]); return {}; }
+      if (s.startsWith('INSERT INTO tbFinancas')) { estado.financas.push({ valor: p[1], chave: p[2] }); return {}; }
+      if (s.startsWith('UPDATE tbFaturas SET paga')) { estado.paga = p[0]; return {}; }
+      return {};
+    },
+  });
+  try {
+    for (let i = 0; i < 2; i++) assert.strictEqual((await chamar('PATCH', '/api/app/faturas/1/paga', { paga: true })).status, 200);
+    assert.deepStrictEqual(estado.ocorr, { 1: 'EFETIVADA', 2: 'EFETIVADA' });
+    assert.strictEqual(estado.financas.length, 1); assert.strictEqual(estado.financas[0].valor, 370, '100 lançado + 120 + 150 estimados');
+    await chamar('PATCH', '/api/app/faturas/1/paga', { paga: false });
+    assert.deepStrictEqual(estado.ocorr, { 1: 'PREVISTA', 2: 'PREVISTA' }); assert.strictEqual(estado.financas.length, 0);
   } finally { pool.getConnection = orig; }
 });
 
