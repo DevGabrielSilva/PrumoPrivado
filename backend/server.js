@@ -26,7 +26,7 @@ app.use('/api/app',require('./routes/gastos-fixos'));
 app.use('/api/app',require('./routes/dados'));
 
 app.use((q,r)=>r.status(404).json({sucesso:false,mensagem:'Rota não encontrada'}));
-if(require.main===module)require('./services/schema').garantirColunas(pool).then(()=>app.listen(PORT,HOST,()=>{console.log(`PRUMO em http://${HOST}:${PORT}`);
+if(require.main===module)require('./services/schema').garantirColunas(pool).then(async ok=>{if(ok)await require('./services/schema').religarCustosBens(pool).catch(e=>console.warn(e.message))}).then(()=>app.listen(PORT,HOST,()=>{console.log(`PRUMO em http://${HOST}:${PORT}`);
   // Backup automático diário em ./backups (14 cópias). BACKUP_AUTO=0 desliga; BACKUP_DIR muda a pasta.
   if(process.env.BACKUP_AUTO!=='0')require('./services/backup').iniciarAutomatico(pool,{dir:process.env.BACKUP_DIR||path.join(__dirname,'..','backups')});
 }));

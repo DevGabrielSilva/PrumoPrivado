@@ -353,6 +353,42 @@ test('Pergunta do arquivo só aparece quando a fatura NÃO tem total informado',
   assert.strictEqual(f({ informado: '1' }), false);
 });
 
+
+test('Custos antigos de Bens no crédito: liga a compra existente, cria as parcelas que faltam, não duplica e lista o que falta', async () => {
+  const { religarCustosBens } = require('../backend/services/schema');
+  const fins = [
+    { codFin: 1, descricao: 'Seguro Lindy', valor: 300, dataMovimentacao: '2026-10-05', codCartao: 1, quantidadeParcelas: 3, primeiraFatura: '2026-10-10' },
+    { codFin: 2, descricao: 'Seguro Kangoo', valor: 884.09, dataMovimentacao: '2026-11-20', codCartao: 1, quantidadeParcelas: 12, primeiraFatura: '2026-12-10' },
+    { codFin: 3, descricao: 'Custo sem cartão', valor: 50, dataMovimentacao: '2026-11-01', codCartao: null, quantidadeParcelas: null, primeiraFatura: null },
+  ];
+  const compras = [{ codCompra: 77, codFin: null, chaveOrigem: null, codCartao: 1, valorTotal: 884.09 }];
+  const parcelas = []; let seq = 100;
+  const q = async (sql, p = []) => {
+    const s = String(sql).replace(/\s+/g, ' ');
+    if (s.startsWith('SELECT f.codFin,f.descricao')) return fins.filter((f) => f.codCartao !== undefined && !compras.some((x) => x.codFin === f.codFin));
+    if (s.startsWith('SELECT x.codCompra FROM tbComprasCartao')) return compras.filter((x) => x.codFin == null && x.chaveOrigem == null && x.codCartao === p[0] && x.valorTotal === Number(p[1])).map((x) => ({ codCompra: x.codCompra }));
+    if (s.startsWith('SELECT COUNT(*) n FROM tbFinancas g')) return [{ n: fins.filter((g) => g.codFin !== p[0] && g.codCartao === p[1] && g.valor === Number(p[2]) && !compras.some((x) => x.codFin === g.codFin)).length }];
+    if (s.startsWith('UPDATE tbComprasCartao SET codFin')) { compras.find((x) => x.codCompra === p[1]).codFin = p[0]; return {}; }
+    if (s.startsWith('SELECT diaFechamento')) return [{ diaFechamento: 20 }];
+    if (s.startsWith('SELECT diaVencimento')) return [{ diaVencimento: 10 }];
+    if (s.startsWith('INSERT INTO tbComprasCartao')) { compras.push({ codCompra: ++seq, codFin: p[8], chaveOrigem: null, codCartao: p[0], valorTotal: p[4] }); return { insertId: seq }; }
+    if (s.startsWith('INSERT INTO tbParcelasCartao')) { parcelas.push({ compra: p[0], n: p[1], valor: p[2], data: p[3] }); return { insertId: ++seq }; }
+    if (s.startsWith('SELECT codFatura')) return [{ codFatura: 1 }];
+    return [];
+  };
+  const pool2 = { query: q, async getConnection() { return { query: q, async beginTransaction() {}, async commit() {}, async rollback() {}, release() {} }; } };
+  const r = await religarCustosBens(pool2);
+  assert.strictEqual(r.ligados, 1, 'Kangoo: liga a compra que já estava na fatura (sem duplicar)');
+  assert.strictEqual(r.criados, 1, 'Lindy: cria a compra');
+  assert.strictEqual(compras.filter((x) => x.valorTotal === 884.09).length, 1);
+  const lindy = parcelas.filter((x) => x.compra > 100);
+  assert.deepStrictEqual(lindy.map((x) => x.data), ['2026-10-10', '2026-11-10', '2026-12-10']);
+  assert.strictEqual(lindy.reduce((a, x) => a + x.valor, 0), 300);
+  assert.deepStrictEqual(r.semDados.map((x) => x.codFin), [3]);
+  const r2 = await religarCustosBens(pool2);
+  assert.strictEqual(r2.ligados + r2.criados, 0, 'rodar de novo não cria nada');
+});
+
 // ---- Item 7: fuso (America/Sao_Paulo) e edição de custo de bem ----
 const { hoje, mesAtual } = require('../backend/helpers');
 const fs = require('node:fs');
