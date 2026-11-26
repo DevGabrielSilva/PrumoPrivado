@@ -106,3 +106,10 @@ Os testes verificam as funções de cálculo, a estrutura dos arquivos e as resp
 - próximos compromissos preenchidos;
 - módulo de gastos fixos;
 - saldo livre, custo fixo, sobra mensal, cobertura da reserva e próximo risco na Visão geral.
+
+## Novidades da v2.2
+
+- **Outros automático**: ao informar o total da fatura, o que não foi anotado vira uma compra "Outros - <cartão> <AAAA-MM>" (chave `fatura-outros:<codFatura>`). Reinformar o total atualiza, nunca duplica. Se você anotou mais que a fatura, aparece o alerta de excedente em Cartões. Rode `database/migrate-consolidated.sql` (adiciona `tbComprasCartao.chaveOrigem`).
+- **Pru interativo**: comentário curto a cada lançamento, transferência e fatura; o simulador diz por quantos meses a compra deixa você no vermelho. Dá pra deixar o Pru quieto em Configurações.
+- **Lançamento rápido** (botão "+"), **lembretes** de fatura que fechou/vai fechar, **importar fatura** (PDF/CSV/texto: só sugere o total) e **Resumo do mês**.
+- Home mais simples: cotações discretas e três números principais.

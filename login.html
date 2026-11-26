@@ -1,0 +1,8 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PRUMO | Entrar</title><link rel="icon" href="assets/mascote.png"><script>try{const t=localStorage.getItem("prumo-theme");if(t&&t!=="system")document.documentElement.dataset.theme=t}catch(e){}</script><link rel="stylesheet" href="css/style.css">
+<style>body{display:grid;place-items:center;min-height:100vh;margin:0}.login{width:min(380px,92vw);display:grid;gap:14px;text-align:center}.login img{width:96px;height:96px;object-fit:contain;margin:0 auto}.login form{display:grid;gap:12px}#msg{min-height:20px;color:var(--red);font-weight:600}</style></head>
+<body><main class="panel login"><img src="assets/mascote.png" alt="Pru"><h1>PRUMO</h1><p class="hint">Digite sua senha para entrar.</p>
+<form id="f"><input id="senha" type="password" autocomplete="current-password" placeholder="Senha ou PIN" required autofocus><button class="primary">Entrar</button><div id="msg" role="alert"></div></form></main>
+<script>
+fetch('/api/auth/estado').then(r=>r.json()).then(j=>{if(j.dados&&j.dados.logado)location.replace('/')}).catch(()=>{});
+document.getElementById('f').onsubmit=async e=>{e.preventDefault();const m=document.getElementById('msg');m.textContent='';try{const r=await fetch('/api/auth/entrar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({senha:document.getElementById('senha').value})}),j=await r.json();if(r.ok&&j.sucesso)location.replace('/');else{m.textContent=j.mensagem||'Não foi possível entrar.';document.getElementById('senha').select()}}catch{m.textContent='Sem conexão com o servidor.'}};
+</script></body></html>

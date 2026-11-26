@@ -49,3 +49,11 @@ test('rotas centrais continuam existindo', () => {
     assert.ok(conteudo.includes(esperada), `rota ${esperada} não encontrada`);
   }
 });
+
+test('modo privacidade: botão de olho e regra de máscara existem no front', () => {
+  const js = fs.readFileSync(path.join(raiz, 'JS/melhorias.js'), 'utf8');
+  assert.ok(js.includes("prumo-privado") && js.includes('privToggle') && js.includes('••••'));
+  const re = /-?(?:R\$|US\$|€)\s?-?[\d.,]+/g;
+  const out = 'Saldo -R$ 1.234,56 e US$ 5,00 e € 3,10 (40%)'.replace(re, '••••');
+  assert.ok(!/\d{2}[.,]\d{2}|1\.234|5,00|3,10/.test(out) && out.includes('40%'), out);
+});

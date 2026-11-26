@@ -11,3 +11,4 @@ database/private/
 apply_*.py
 apply_update*.py
 apply_hotfix*.py
+backups/
