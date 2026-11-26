@@ -319,6 +319,40 @@ test('Marcar fatura como paga SEM total/PDF: estimativas do cartão viram efetiv
   } finally { pool.getConnection = orig; }
 });
 
+test('Marcar paga COM total informado (arquivo ou manual): paga direto o total e efetiva as estimativas', async () => {
+  const estado = { paga: 0, financas: [], ocorr: { 1: 'PREVISTA' } };
+  const orig = pool.getConnection;
+  pool.getConnection = async () => ({
+    async beginTransaction() {}, async commit() {}, async rollback() {}, release() {},
+    async query(sql, p = []) {
+      const s = String(sql).replace(/\s+/g, ' ');
+      if (s.startsWith('SELECT f.codFatura,f.codCartao,f.paga')) return [{ codFatura: 1, codCartao: 1, paga: estado.paga, valorTotal: 1000, valorInformado: 1, nomeCartao: 'Santander', competencia: '2026-11', conhecido: 400 }];
+      if (s.includes('FROM tbOcorrenciasRecorrentes o JOIN tbFinancas m')) return Object.entries(estado.ocorr).filter(([, v]) => v === 'PREVISTA').map(([id]) => ({ codOcorrencia: Number(id), valor: 120, dataPrevista: '2026-11-10', descricao: 'gasolina', categoria: 'Transporte', codCartao: 1 }));
+      if (s.startsWith('SELECT x.codCartao')) return [];
+      if (s.startsWith('SELECT f.codCartao,f.valorInformado')) return [{ codCartao: 1, valorInformado: 1, dataVencimento: '2026-11-10' }];
+      if (s.startsWith('SELECT codCartao,nomeCartao')) return [{ codCartao: 1, nomeCartao: 'Santander', diaVencimento: 10 }];
+      if (s.startsWith("UPDATE tbOcorrenciasRecorrentes SET situacao='EFETIVADA'")) { p.forEach((id) => { estado.ocorr[id] = 'EFETIVADA'; }); return {}; }
+      if (s.startsWith('INSERT INTO tbFinancas')) { estado.financas.push({ valor: p[1] }); return {}; }
+      if (s.startsWith('UPDATE tbFaturas SET paga')) { estado.paga = p[0]; return {}; }
+      return {};
+    },
+  });
+  try {
+    assert.strictEqual((await chamar('PATCH', '/api/app/faturas/1/paga', { paga: true })).status, 200);
+    assert.strictEqual(estado.paga, 1); assert.strictEqual(estado.financas[0].valor, 1000);
+    assert.deepStrictEqual(estado.ocorr, { 1: 'EFETIVADA' });
+  } finally { pool.getConnection = orig; }
+});
+
+test('Pergunta do arquivo só aparece quando a fatura NÃO tem total informado', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'JS', 'ux.js'), 'utf8');
+  const i = src.indexOf('function deveOferecerArquivo'), j = src.indexOf('\n', i);
+  const f = new Function(src.slice(i, j) + '; return deveOferecerArquivo;')();
+  assert.strictEqual(f({ informado: '0' }), true);
+  assert.strictEqual(f({}), true);
+  assert.strictEqual(f({ informado: '1' }), false);
+});
+
 // ---- Item 7: fuso (America/Sao_Paulo) e edição de custo de bem ----
 const { hoje, mesAtual } = require('../backend/helpers');
 const fs = require('node:fs');
